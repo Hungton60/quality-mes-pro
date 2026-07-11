@@ -1,13 +1,19 @@
 """
-db_pro.py — Database cho QualityMES Pro
-Lưu trữ tách biệt hoàn toàn với App A:
-  - JSON local: thư mục riêng /tmp/quality_mes_pro/
-  - Google Sheets: dùng secrets riêng (spreadsheet_id_pro + gcp_service_account_pro)
+db_pro.py — Database cho QualityMES Pro v2.0
+Cải tiến:
+  ✅ Caching tối ưu (cache_resource + cache_data)
+  ✅ Session persistence — giữ đăng nhập khi reload
+  ✅ Auto-save + Draft system
+  ✅ Google Drive integration cho file management
+  ✅ Dual-write: JSON local + Google Sheets + Google Drive
 """
 import json, os, streamlit as st
 from pathlib import Path
 from datetime import datetime
 
+# ══════════════════════════════════════════════════════════
+# CONFIG
+# ══════════════════════════════════════════════════════════
 DATA_DIR = Path(os.environ.get("QUALITY_MES_PRO_DIR", "/tmp/quality_mes_pro"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -23,12 +29,11 @@ DEFAULTS = {
 def _path(k): return DATA_DIR / f"pro_{k}.json"
 
 # ══════════════════════════════════════════════════════════
-# GOOGLE SHEETS — dùng secrets RIÊNG cho App Pro
-#   st.secrets["spreadsheet_id_pro"]
-#   st.secrets["gcp_service_account_pro"]
-# (khác hoàn toàn với App A dùng "spreadsheet_id" + "gcp_service_account")
+# CACHING OPTIMIZATION — Giảm tải Google Sheets
 # ══════════════════════════════════════════════════════════
+@st.cache_resource
 def _get_gspread_client_pro():
+    """Cache kết nối Google Sheets"""
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -45,7 +50,26 @@ def _get_gspread_client_pro():
     except Exception:
         return None
 
+@st.cache_resource
+def _get_drive_client_pro():
+    """Cache kết nối Google Drive"""
+    try:
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+        SCOPES = ["https://www.googleapis.com/auth/drive"]
+        if hasattr(st, "secrets") and "gcp_service_account_pro" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account_pro"])
+        elif os.environ.get("GOOGLE_CREDENTIALS_PRO"):
+            creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_PRO"])
+        else:
+            return None
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        return build("drive", "v3", credentials=creds)
+    except Exception:
+        return None
+
 def _get_spreadsheet_pro():
+    """Lấy spreadsheet từ cache"""
     gc = _get_gspread_client_pro()
     if gc is None: return None
     try:
@@ -63,8 +87,11 @@ def _ensure_sheet_pro(ss, name):
     try: return ss.worksheet(name)
     except Exception: return ss.add_worksheet(title=name, rows=2000, cols=30)
 
+# ══════════════════════════════════════════════════════════
+# GOOGLE SHEETS — Read/Write
+# ══════════════════════════════════════════════════════════
 def _gs_load(key: str):
-    """Đọc 1 sheet tab. Hỗ trợ cả dict-of-lists (theo dự án) và list thuần."""
+    """Đọc 1 sheet tab. Hỗ trợ cả dict-of-lists và list thuần."""
     try:
         ss = _get_spreadsheet_pro()
         if ss is None: return None
@@ -110,7 +137,6 @@ def _gs_save(key: str, data) -> bool:
 
         is_dict_type = isinstance(data, dict)
         if is_dict_type:
-            # Flatten dict-of-lists thành rows kèm cột _project_code
             flat_rows = []
             for da_code, lst in data.items():
                 for row in lst:
@@ -146,6 +172,110 @@ def _gs_save(key: str, data) -> bool:
         return True
     except Exception:
         return False
+
+# ══════════════════════════════════════════════════════════
+# GOOGLE DRIVE — File Management
+# ══════════════════════════════════════════════════════════
+def upload_file_to_drive(file_name, file_content, folder_id=None):
+    """Upload file lên Google Drive"""
+    try:
+        drive = _get_drive_client_pro()
+        if drive is None: return None
+        
+        file_metadata = {"name": file_name}
+        if folder_id:
+            file_metadata["parents"] = [folder_id]
+        
+        from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
+        media = MediaInMemoryUpload(file_content, resumable=True)
+        file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        return file.get("id")
+    except Exception:
+        return None
+
+def list_drive_files(folder_id=None, query_filter=None):
+    """Liệt kê file trên Google Drive"""
+    try:
+        drive = _get_drive_client_pro()
+        if drive is None: return []
+        
+        q = "trashed=false"
+        if folder_id:
+            q += f" and '{folder_id}' in parents"
+        if query_filter:
+            q += f" and name contains '{query_filter}'"
+        
+        results = drive.files().list(q=q, spaces="drive", fields="files(id, name, webViewLink, mimeType, createdTime, size)", pageSize=50).execute()
+        return results.get("files", [])
+    except Exception:
+        return []
+
+def get_drive_file_download_url(file_id):
+    """Lấy link download file từ Google Drive"""
+    return f"https://drive.google.com/uc?id={file_id}&export=download"
+
+# ══════════════════════════════════════════════════════════
+# SESSION PERSISTENCE — Giữ đăng nhập khi reload
+# ══════════════════════════════════════════════════════════
+def save_session_token(user_account):
+    """Lưu session token vào file local (bảo mật cơ bản)"""
+    token = {
+        "account": user_account,
+        "timestamp": datetime.now().isoformat(),
+        "expires": (datetime.now().timestamp() + 86400 * 7)  # 7 ngày
+    }
+    token_path = DATA_DIR / "session_token.json"
+    token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
+
+def load_session_token():
+    """Load session token và kiểm tra hạn"""
+    try:
+        token_path = DATA_DIR / "session_token.json"
+        if not token_path.exists():
+            return None
+        token = json.loads(token_path.read_text(encoding="utf-8"))
+        if datetime.now().timestamp() > token.get("expires", 0):
+            token_path.unlink()  # Xóa token hết hạn
+            return None
+        return token.get("account")
+    except Exception:
+        return None
+
+def clear_session_token():
+    """Xóa session token khi đăng xuất"""
+    try:
+        token_path = DATA_DIR / "session_token.json"
+        if token_path.exists():
+            token_path.unlink()
+    except Exception:
+        pass
+
+# ══════════════════════════════════════════════════════════
+# DRAFT SYSTEM — Auto-save + Tự động lưu nháp
+# ══════════════════════════════════════════════════════════
+def save_draft(form_key, form_data):
+    """Lưu nháp form"""
+    draft_path = DATA_DIR / f"draft_{form_key}.json"
+    draft_path.write_text(json.dumps(form_data, ensure_ascii=False, default=str), encoding="utf-8")
+
+def load_draft(form_key):
+    """Load nháp form"""
+    try:
+        draft_path = DATA_DIR / f"draft_{form_key}.json"
+        if draft_path.exists():
+            return json.loads(draft_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+def clear_draft(form_key):
+    """Xóa nháp"""
+    try:
+        draft_path = DATA_DIR / f"draft_{form_key}.json"
+        if draft_path.exists():
+            draft_path.unlink()
+    except Exception:
+        pass
 
 # ══════════════════════════════════════════════════════════
 # PUBLIC API
@@ -199,5 +329,16 @@ def gs_status_pro() -> dict:
         return {"connected": False, "message": "Lưu local (JSON)"}
     try:
         return {"connected": True, "message": f"Đã kết nối: {ss.title}"}
+    except Exception as e:
+        return {"connected": False, "message": f"Lỗi: {e}"}
+
+def drive_status_pro() -> dict:
+    """Kiểm tra kết nối Google Drive"""
+    drive = _get_drive_client_pro()
+    if drive is None:
+        return {"connected": False, "message": "Google Drive chưa kết nối"}
+    try:
+        about = drive.about().get(fields="storageQuota").execute()
+        return {"connected": True, "message": f"Google Drive OK"}
     except Exception as e:
         return {"connected": False, "message": f"Lỗi: {e}"}

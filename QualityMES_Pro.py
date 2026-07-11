@@ -3,7 +3,12 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, date
 from collections import Counter
-from db_pro import load_all, save_key, backup_all, restore_all, gs_status_pro
+from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
+                    save_session_token, load_session_token, clear_session_token,
+                    save_draft, load_draft, clear_draft,
+                    upload_file_to_drive, list_drive_files, get_drive_file_download_url,
+                    drive_status_pro)
+import time
 
 # ══════════════════════════════════════════════════════════
 # CONFIG & CSS
@@ -86,6 +91,23 @@ _init("current_user",   None)
 _init("login_error",    "")
 _init("active_project", None)   # Mã DA đang xem
 _init("spc_df",         None)
+
+# ══════════════════════════════════════════════════════════
+# AUTO-SAVE SYSTEM
+# ══════════════════════════════════════════════════════════
+_init("last_save_time", time.time())
+_init("unsaved_changes", False)
+
+def auto_save():
+    """Auto-save nếu có thay đổi và đã 30s"""
+    now = time.time()
+    if st.session_state.unsaved_changes and (now - st.session_state.last_save_time > 30):
+        for key in ["iqc_data", "ipqc_data", "oqc_data", "ncr_data", "capa_data", "dev_data"]:
+            if st.session_state[key]:
+                save_key(key, st.session_state[key])
+        st.session_state.last_save_time = now
+        st.session_state.unsaved_changes = False
+
 
 _init("users_list", [
     {"Tài khoản":"admin","Họ tên":"Quản lý","Mật khẩu":"admin123","Phân quyền":"Quản lý","Trạng thái":"Hoạt động"},
@@ -237,6 +259,21 @@ def table_actions(data_list_ref, id_field, phane, data_key, edit_fn,
 # LOGIN
 # ══════════════════════════════════════════════════════════
 if st.session_state.current_user is None:
+    # ✅ KIỂM TRA SESSION TOKEN CŨ
+    saved_account = load_session_token()
+    if saved_account:
+        matched = next((u for u in st.session_state.users_list
+                        if u["Tài khoản"] == saved_account
+                        and u.get("Trạng thái") == "Hoạt động"), None)
+        if matched:
+            st.session_state.current_user = {
+                "Tài khoản": matched["Tài khoản"],
+                "Họ tên": matched["Họ tên"],
+                "Vai trò": matched["Phân quyền"]
+            }
+            st.rerun()
+
+if st.session_state.current_user is None:
     st.markdown("""<style>
         section[data-testid="stSidebar"]{display:none!important}
         .block-container{padding-top:0!important}
@@ -267,6 +304,7 @@ if st.session_state.current_user is None:
                     st.session_state.current_user = {"Tài khoản":matched["Tài khoản"],
                         "Họ tên":matched["Họ tên"],"Vai trò":matched["Phân quyền"]}
                     st.session_state.login_error = ""
+                    save_session_token(matched["Tài khoản"])
                     ghi_log("Auth","Đăng nhập",f"{matched['Họ tên']} đăng nhập","-")
                     st.rerun()
                 else:
@@ -328,6 +366,7 @@ page = st.sidebar.radio("MENU", MENU, index=0)
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Đăng xuất", use_container_width=True):
     ghi_log("Auth","Đăng xuất",f"{cu()['Họ tên']} đăng xuất","-")
+    clear_session_token()
     st.session_state.current_user  = None
     st.session_state.active_project = None
     st.rerun()
@@ -516,6 +555,18 @@ elif page == "📁 Quản lý Dự án":
 def form_iqc():
     require_project(); da_banner()
     st.markdown("## ✅ Kiểm tra đầu vào (IQC)")
+    
+    # ✅ HIỂN THỊ DRAFT NẾU CÓ
+    draft = load_draft("iqc_form")
+    if draft:
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.info(f"📝 Có nháp từ {draft.get('saved_at', 'lúc trước')} — nội dung chưa lưu")
+        with col2:
+            if st.button("🔄 Tải lại", key="load_iqc_draft"):
+                st.session_state.iqc_draft = draft
+                st.rerun()
+    
     h1,h2=st.columns([7,1.5])
     lst=get_da_list("iqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
@@ -530,13 +581,30 @@ def form_iqc():
             ng=c2.date_input("Ngày kiểm",value=date.today()); gi=c1.time_input("Giờ kiểm",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=60)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
+            
+            # ✅ AUTO-SAVE DRAFT + GOOGLE DRIVE
+            draft_data = {"số_phiếu": sp, "tên_vật_tư": vt, "saved_at": datetime.now().strftime("%H:%M:%S")}
+            if sp or vt:
+                save_draft("iqc_form", draft_data)
+            
+            uploaded_file_ids = []
+            if up:
+                st.write("⏳ Đang upload file lên Google Drive...")
+                for file in up:
+                    file_id = upload_file_to_drive(file_name=file.name, file_content=file.getvalue())
+                    if file_id:
+                        uploaded_file_ids.append({"name": file.name, "id": file_id, "url": get_drive_file_download_url(file_id)})
+                        st.success(f"✅ {file.name}")
+                    else:
+                        st.warning(f"⚠️ {file.name} — lưu local")
+            
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and vt:
                     lst.append({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc or "-","Lô":lo or "-",
                         "SL mẫu":sl or "-","Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
-                        "Người kiểm":nk,"Files":[f.name for f in up] if up else [],
+                        "Người kiểm":nk,"Files":[f.name for f in up] if up else [],"drive_files": uploaded_file_ids,
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                    set_da_list("iqc_data",lst); ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
+                    set_da_list("iqc_data",lst); clear_draft("iqc_form"); ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
 
     def edit_iqc(idx,row,lst_ref,dk):
