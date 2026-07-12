@@ -1,0 +1,5 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# JSON keys  
+*.json
