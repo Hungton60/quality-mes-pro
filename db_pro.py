@@ -357,10 +357,18 @@ def restore_all(data_bytes: bytes, session_state) -> tuple:
         return False, f"Lỗi: {e}"
 
 def gs_status_pro() -> dict:
-    ss = _get_spreadsheet_pro()
-    if ss is None:
-        return {"connected": False, "message": "Lưu local (JSON)"}
     try:
+        # Debug: kiểm tra secrets
+        if not hasattr(st, "secrets"):
+            return {"connected": False, "message": "Lưu local (JSON) — No secrets"}
+        if "gcp_service_account_pro" not in st.secrets:
+            return {"connected": False, "message": "Lưu local (JSON) — No gcp_service_account_pro in secrets"}
+        if "spreadsheet_id_pro" not in st.secrets:
+            return {"connected": False, "message": "Lưu local (JSON) — No spreadsheet_id_pro in secrets"}
+        
+        ss = _get_spreadsheet_pro()
+        if ss is None:
+            return {"connected": False, "message": "Lưu local (JSON) — Client init failed"}
         return {"connected": True, "message": f"Đã kết nối: {ss.title}"}
     except Exception as e:
         return {"connected": False, "message": f"Lỗi: {e}"}
