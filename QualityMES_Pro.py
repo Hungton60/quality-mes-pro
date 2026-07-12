@@ -578,6 +578,15 @@ def form_iqc():
                 clear_draft("iqc_form")
                 st.rerun()
     
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
+    if st.session_state.get("last_drive_upload"):
+        st.success("✅ Files đã upload lên Google Drive:")
+        for f in st.session_state["last_drive_upload"]:
+            st.markdown(f"📥 [{f['name']}]({f['url']})")
+        if st.button("Đóng thông báo", key="close_drive_msg"):
+            st.session_state["last_drive_upload"] = None
+            st.rerun()
+    
     h1,h2=st.columns([7,1.5])
     lst=get_da_list("iqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
@@ -590,7 +599,7 @@ def form_iqc():
             sl=c1.text_input("SL mẫu"); tt=c2.selectbox("Trạng thái",["Đạt (Pass)","Không đạt (Failed)"])
             un=unames(); nk=c1.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c2.date_input("Ngày kiểm",value=date.today()); gi=c1.time_input("Giờ kiểm",value=datetime.now().time())
-            gc=st.text_area("Ghi chú",height=60)
+            gc=st.text_area("Ghi chú",height=100)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
             
             # ✅ AUTO-SAVE DRAFT khi nhập liệu
@@ -604,12 +613,10 @@ def form_iqc():
                 save_draft("iqc_form", draft_data)
                 st.session_state[draft_key] = draft_data
 
-            # ✅ GOOGLE DRIVE UPLOAD
+            # ✅ GOOGLE DRIVE UPLOAD (không dùng st.empty trong form)
             drive_files = []
             if up:
-                progress = st.empty()
-                for i, file in enumerate(up):
-                    progress.write(f"⏳ Đang upload {file.name}...")
+                for file in up:
                     file_id = upload_file_to_drive(
                         file_name=file.name,
                         file_content=file.getvalue()
@@ -617,9 +624,6 @@ def form_iqc():
                     if file_id:
                         drive_url = get_drive_file_download_url(file_id)
                         drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
-                        progress.write(f"✅ {file.name} — [Tải xuống]({drive_url})")
-                    else:
-                        progress.write(f"⚠️ {file.name} — lưu local")
 
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and vt:
@@ -632,6 +636,9 @@ def form_iqc():
                     clear_draft("iqc_form")
                     draft_key = f"iqc_draft_{st.session_state.active_project}"
                     st.session_state[draft_key] = None
+                    # Hiện kết quả upload Drive
+                    if drive_files:
+                        st.session_state["last_drive_upload"] = drive_files
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
 
@@ -645,7 +652,7 @@ def form_iqc():
             tt=c2.selectbox("Trạng thái",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_iqc_{idx}")
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c1.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_iqc_{idx}")
-            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
+            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
             cur_files=list(row.get("Files",[]));
             if cur_files: st.markdown("**Files hiện tại:** "+", ".join(f"`{f}`" for f in cur_files))
             new_up=st.file_uploader("➕ Thêm file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key=f"up_iqc_{idx}")
@@ -672,7 +679,7 @@ def form_ipqc():
             tt=c1.selectbox("Trạng thái",["Đạt (Pass)","Không đạt (Failed)"])
             un=unames(); nk=c2.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
-            gc=st.text_area("Ghi chú",height=60)
+            gc=st.text_area("Ghi chú",height=100)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and cd:
@@ -692,7 +699,7 @@ def form_ipqc():
             tt=c1.selectbox("Trạng thái",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_ipqc_{idx}")
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c2.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_ipqc_{idx}")
-            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
+            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
             if st.form_submit_button("💾 Lưu",use_container_width=True):
                 lst_ref[idx].update({"Số phiếu":sp,"Tên công đoạn":cd,"Lô":lo,"SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
                 set_da_list("ipqc_data",lst_ref); ghi_log("IPQC","Cập nhật",f"Sửa {sp}"); st.rerun()
@@ -713,7 +720,7 @@ def form_oqc():
             tt=c1.selectbox("Trạng thái",["Đạt (Pass)","Không đạt (Failed)"])
             un=unames(); nk=c2.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
-            gc=st.text_area("Ghi chú",height=60)
+            gc=st.text_area("Ghi chú",height=100)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and spn:
@@ -733,7 +740,7 @@ def form_oqc():
             tt=c1.selectbox("Trạng thái",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_oqc_{idx}")
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c2.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_oqc_{idx}")
-            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
+            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
             if st.form_submit_button("💾 Lưu",use_container_width=True):
                 lst_ref[idx].update({"Số phiếu":sp,"Mã/Tên SP":spn,"Lô":lo,"SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
                 set_da_list("oqc_data",lst_ref); ghi_log("OQC","Cập nhật",f"Sửa {sp}"); st.rerun()
@@ -767,7 +774,7 @@ elif page == "⚠️ NCR + CAPA":
                 un=unames(); ph=c1.selectbox("Người phát hiện",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
                 nl=c2.selectbox("Người lập",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
                 ng=c1.date_input("Ngày",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
-                gc=st.text_area("Ghi chú",height=60)
+                gc=st.text_area("Ghi chú",height=100)
                 up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
                 if st.form_submit_button("✅ Tạo NCR",use_container_width=True):
                     if so and ten:
@@ -790,7 +797,7 @@ elif page == "⚠️ NCR + CAPA":
                 un=unames(); cur_ph=row.get("Người phát hiện",""); cur_nl=row.get("Người lập","")
                 ph=c1.selectbox("Người phát hiện",un,index=un.index(cur_ph) if cur_ph in un else 0,key=f"ph_ncr_{idx}")
                 nl=c2.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_ncr_{idx}")
-                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
+                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
                 if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Số NCR":so,"Tên vật tư/SP":ten,"Lô":lo,"SL phát hiện":sl,
                         "Mức độ":md,"Trạng thái":tt,"Người phát hiện":ph,"Người lập":nl,"Ghi chú":gc})
@@ -808,9 +815,9 @@ elif page == "⚠️ NCR + CAPA":
                 bp=c1.text_input("Bộ phận"); th=c2.date_input("Thời hạn",value=date.today())
                 tt=c1.selectbox("Trạng thái CAPA",["Đang tiến hành","Hoàn thành","Quá hạn"])
                 un=unames(); nl=c2.selectbox("Người lập",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
-                nn=st.text_area("Nguyên nhân gốc rễ",height=60)
-                kp=st.text_area("Hành động khắc phục",height=60)
-                pn=st.text_area("Hành động phòng ngừa",height=60)
+                nn=st.text_area("Nguyên nhân gốc rễ",height=100)
+                kp=st.text_area("Hành động khắc phục",height=100)
+                pn=st.text_area("Hành động phòng ngừa",height=100)
                 gc=st.text_area("Ghi chú",height=50)
                 up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
                 if st.form_submit_button("✅ Tạo CAPA",use_container_width=True):
@@ -832,8 +839,8 @@ elif page == "⚠️ NCR + CAPA":
                 tt=c1.selectbox("Trạng thái CAPA",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_capa_{idx}")
                 un=unames(); cur_nl=row.get("Người lập","")
                 nl=c2.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_capa_{idx}")
-                nn=st.text_area("Nguyên nhân",value=row.get("Nguyên nhân",""),height=60)
-                kp=st.text_area("Khắc phục",value=row.get("Khắc phục",""),height=60)
+                nn=st.text_area("Nguyên nhân",value=row.get("Nguyên nhân",""),height=100)
+                kp=st.text_area("Khắc phục",value=row.get("Khắc phục",""),height=100)
                 gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=50)
                 if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Mã CAPA":ma,"Số NCR":ncr,"Bộ phận":bp,"Thời hạn":th,
