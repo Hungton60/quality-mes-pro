@@ -39,15 +39,31 @@ def _get_gspread_client_pro():
         from google.oauth2.service_account import Credentials
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
                   "https://www.googleapis.com/auth/drive"]
+        creds_dict = None
         if hasattr(st, "secrets") and "gcp_service_account_pro" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account_pro"])
+            # Hỗ trợ cả TOML section [gcp_service_account_pro] và JSON object
+            raw = st.secrets["gcp_service_account_pro"]
+            if hasattr(raw, '_asdict'):
+                creds_dict = dict(raw._asdict())
+            elif hasattr(raw, 'to_dict'):
+                creds_dict = raw.to_dict()
+            elif isinstance(raw, dict):
+                creds_dict = dict(raw)
+            else:
+                creds_dict = {k: v for k, v in raw.items()}
         elif os.environ.get("GOOGLE_CREDENTIALS_PRO"):
             creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_PRO"])
-        else:
+        
+        if not creds_dict:
+            print("[GSheets] No credentials found")
             return None
+        
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        return gspread.authorize(creds)
-    except Exception:
+        client = gspread.authorize(creds)
+        print("[GSheets] ✅ Connected!")
+        return client
+    except Exception as e:
+        print(f"[GSheets] ❌ Error: {e}")
         return None
 
 @st.cache_resource
@@ -57,15 +73,27 @@ def _get_drive_client_pro():
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
         SCOPES = ["https://www.googleapis.com/auth/drive"]
+        creds_dict = None
         if hasattr(st, "secrets") and "gcp_service_account_pro" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account_pro"])
+            raw = st.secrets["gcp_service_account_pro"]
+            if hasattr(raw, '_asdict'):
+                creds_dict = dict(raw._asdict())
+            elif hasattr(raw, 'to_dict'):
+                creds_dict = raw.to_dict()
+            elif isinstance(raw, dict):
+                creds_dict = dict(raw)
+            else:
+                creds_dict = {k: v for k, v in raw.items()}
         elif os.environ.get("GOOGLE_CREDENTIALS_PRO"):
             creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_PRO"])
-        else:
+        
+        if not creds_dict:
             return None
+        
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         return build("drive", "v3", credentials=creds)
-    except Exception:
+    except Exception as e:
+        print(f"[Drive] ❌ Error: {e}")
         return None
 
 def _get_spreadsheet_pro():
