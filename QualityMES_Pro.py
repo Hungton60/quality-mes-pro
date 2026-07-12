@@ -196,7 +196,7 @@ def render_df(lst, badge_col=None, badge_fn=None):
         ])
     if badge_col and badge_col in cols:
         s = s.map(fn, subset=[badge_col])
-    st.dataframe(s, width='stretch', hide_index=True)
+    st.dataframe(s, use_container_width=True, hide_index=True)
 
 def co_quyen(nguoi_tao):
     role = cu().get("Vai trò","")
@@ -250,12 +250,12 @@ def table_actions(data_list_ref, id_field, phane, data_key, edit_fn,
             with cdel.popover("🗑️ Xóa"):
                 st.warning(f"Xác nhận xóa **{rid}**?")
                 cy, cn = st.columns(2)
-                if cy.button("✅ Xác nhận", key=f"yes_{phane}_{ri}", width='stretch'):
+                if cy.button("✅ Xác nhận", key=f"yes_{phane}_{ri}", use_container_width=True):
                     data_list_ref.pop(ri)
                     set_da_list(data_key, data_list_ref) if data_key in ("iqc_data","ipqc_data","oqc_data","ncr_data","capa_data") else persist(data_key)
                     ghi_log(phane,"Xóa",f"Xóa {rid}")
                     st.rerun()
-                cn.button("❌ Hủy", key=f"no_{phane}_{ri}", width='stretch')
+                cn.button("❌ Hủy", key=f"no_{phane}_{ri}", use_container_width=True)
         else:
             cedit.caption("🔒"); cdel.caption("—")
 
@@ -296,7 +296,7 @@ if st.session_state.current_user is None:
         with st.form("frm_login", clear_on_submit=False):
             username = st.text_input("Tài khoản", placeholder="Nhập tên tài khoản...")
             password = st.text_input("Mật khẩu", type="password", placeholder="Nhập mật khẩu...")
-            if st.form_submit_button("🔐 Đăng nhập", width='stretch', type="primary"):
+            if st.form_submit_button("🔐 Đăng nhập", use_container_width=True, type="primary"):
                 if not username or not password:
                     st.session_state.login_error = "Vui lòng điền đầy đủ tài khoản và mật khẩu."
                     st.rerun()
@@ -368,7 +368,7 @@ MENU = ["🏠 Tổng quan","📁 Quản lý Dự án",
         "📊 Báo cáo SPC","📜 Nhật ký","👤 Người dùng"]
 page = st.sidebar.radio("MENU", MENU, index=0)
 st.sidebar.markdown("---")
-if st.sidebar.button("🚪 Đăng xuất", width='stretch'):
+if st.sidebar.button("🚪 Đăng xuất", use_container_width=True):
     ghi_log("Auth","Đăng xuất",f"{cu()['Họ tên']} đăng xuất","-")
     clear_session_token()
     st.session_state.current_user  = None
@@ -477,8 +477,8 @@ elif page == "📁 Quản lý Dự án":
                            index=un_d.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un_d else 0)
                 da_mo  = st.text_area("Mô tả", height=68)
                 b1,b2,_ = st.columns([1.5,1.5,6])
-                ok = b1.form_submit_button("✅ Tạo", width='stretch')
-                ca = b2.form_submit_button("❌ Hủy", width='stretch')
+                ok = b1.form_submit_button("✅ Tạo", use_container_width=True)
+                ca = b2.form_submit_button("❌ Hủy", use_container_width=True)
                 if ok:
                     if not da_ma or not da_ten: st.error("Điền Mã dự án và Tên dự án")
                     elif any(p["Mã DA"]==da_ma for p in all_projects): st.error("Mã DA đã tồn tại!")
@@ -522,7 +522,7 @@ elif page == "📁 Quản lý Dự án":
             .set_properties(**{"font-size":"13px","padding":"8px 12px"})
             .set_table_styles([{"selector":"thead th","props":[("background","#f8fafc"),("font-weight","700"),
               ("font-size","11px"),("color","#64748b"),("text-transform","uppercase"),("padding","10px 12px")]}]),
-            width='stretch', hide_index=True)
+            use_container_width=True, hide_index=True)
 
         st.markdown("---")
         for i,proj in enumerate(all_projects):
@@ -544,12 +544,12 @@ elif page == "📁 Quản lý Dự án":
                     e_pt=c2.selectbox("Người phụ trách",un_e,index=un_e.index(cur_pt) if cur_pt in un_e else 0,key=f"pt_da_{i}")
                     e_mo=st.text_area("Mô tả",value=proj.get("Mô tả","-"),height=68)
                     sa,sb,_=st.columns([1.5,1.5,6])
-                    if sa.form_submit_button("💾 Lưu",width='stretch'):
+                    if sa.form_submit_button("💾 Lưu",use_container_width=True):
                         st.session_state.project_list[i].update({"Mã DA":e_ma,"Tên dự án":e_ten,"Khách hàng":e_kh,
                             "Địa điểm":e_dd,"Ngày bắt đầu":e_bd,"Ngày kết thúc":e_kt,
                             "Trạng thái":e_tt,"Người phụ trách":e_pt,"Mô tả":e_mo})
                         persist("project_list"); ghi_log("Dự án","Cập nhật",f"Sửa {e_ma}",e_ma); st.rerun()
-                    if sb.form_submit_button("🗑️ Xóa dự án",width='stretch'):
+                    if sb.form_submit_button("🗑️ Xóa dự án",use_container_width=True):
                         st.session_state.project_list.pop(i)
                         persist("project_list"); ghi_log("Dự án","Xóa",f"Xóa {proj['Mã DA']}",proj["Mã DA"]); st.rerun()
 
@@ -621,7 +621,7 @@ def form_iqc():
                     else:
                         progress.write(f"⚠️ {file.name} — lưu local")
 
-            if st.form_submit_button("✅ Tạo phiếu",width='stretch'):
+            if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and vt:
                     lst.append({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc or "-","Lô":lo or "-",
                         "SL mẫu":sl or "-","Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
@@ -649,7 +649,7 @@ def form_iqc():
             cur_files=list(row.get("Files",[]));
             if cur_files: st.markdown("**Files hiện tại:** "+", ".join(f"`{f}`" for f in cur_files))
             new_up=st.file_uploader("➕ Thêm file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key=f"up_iqc_{idx}")
-            if st.form_submit_button("💾 Lưu",width='stretch'):
+            if st.form_submit_button("💾 Lưu",use_container_width=True):
                 new_files=cur_files+([f.name for f in new_up] if new_up else [])
                 lst_ref[idx].update({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc,"Lô":lo,
                     "SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc,"Files":new_files})
@@ -674,7 +674,7 @@ def form_ipqc():
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=60)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
-            if st.form_submit_button("✅ Tạo phiếu",width='stretch'):
+            if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and cd:
                     lst.append({"Số phiếu":sp,"Tên công đoạn":cd,"Lô":lo or "-","SL mẫu":sl or "-",
                         "Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
@@ -693,7 +693,7 @@ def form_ipqc():
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c2.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_ipqc_{idx}")
             gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
-            if st.form_submit_button("💾 Lưu",width='stretch'):
+            if st.form_submit_button("💾 Lưu",use_container_width=True):
                 lst_ref[idx].update({"Số phiếu":sp,"Tên công đoạn":cd,"Lô":lo,"SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
                 set_da_list("ipqc_data",lst_ref); ghi_log("IPQC","Cập nhật",f"Sửa {sp}"); st.rerun()
     st.write("")
@@ -715,7 +715,7 @@ def form_oqc():
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=60)
             up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
-            if st.form_submit_button("✅ Tạo phiếu",width='stretch'):
+            if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and spn:
                     lst.append({"Số phiếu":sp,"Mã/Tên SP":spn,"Lô":lo or "-","SL mẫu":sl or "-",
                         "Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
@@ -734,7 +734,7 @@ def form_oqc():
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c2.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_oqc_{idx}")
             gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
-            if st.form_submit_button("💾 Lưu",width='stretch'):
+            if st.form_submit_button("💾 Lưu",use_container_width=True):
                 lst_ref[idx].update({"Số phiếu":sp,"Mã/Tên SP":spn,"Lô":lo,"SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
                 set_da_list("oqc_data",lst_ref); ghi_log("OQC","Cập nhật",f"Sửa {sp}"); st.rerun()
     st.write("")
@@ -769,7 +769,7 @@ elif page == "⚠️ NCR + CAPA":
                 ng=c1.date_input("Ngày",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
                 gc=st.text_area("Ghi chú",height=60)
                 up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
-                if st.form_submit_button("✅ Tạo NCR",width='stretch'):
+                if st.form_submit_button("✅ Tạo NCR",use_container_width=True):
                     if so and ten:
                         lst.append({"Số NCR":so,"Tên vật tư/SP":ten,"Lô":lo or "-","SL phát hiện":sl or "-",
                             "Thời gian":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
@@ -791,7 +791,7 @@ elif page == "⚠️ NCR + CAPA":
                 ph=c1.selectbox("Người phát hiện",un,index=un.index(cur_ph) if cur_ph in un else 0,key=f"ph_ncr_{idx}")
                 nl=c2.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_ncr_{idx}")
                 gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=60)
-                if st.form_submit_button("💾 Lưu",width='stretch'):
+                if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Số NCR":so,"Tên vật tư/SP":ten,"Lô":lo,"SL phát hiện":sl,
                         "Mức độ":md,"Trạng thái":tt,"Người phát hiện":ph,"Người lập":nl,"Ghi chú":gc})
                     set_da_list("ncr_data",lst_ref); ghi_log("NCR","Cập nhật",f"Sửa {so}"); st.rerun()
@@ -813,7 +813,7 @@ elif page == "⚠️ NCR + CAPA":
                 pn=st.text_area("Hành động phòng ngừa",height=60)
                 gc=st.text_area("Ghi chú",height=50)
                 up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
-                if st.form_submit_button("✅ Tạo CAPA",width='stretch'):
+                if st.form_submit_button("✅ Tạo CAPA",use_container_width=True):
                     if ma:
                         lst.append({"Mã CAPA":ma,"Số NCR":ncr or "-","Nguyên nhân":nn or "-",
                             "Khắc phục":kp or "-","Phòng ngừa":pn or "-","Bộ phận":bp or "-",
@@ -835,7 +835,7 @@ elif page == "⚠️ NCR + CAPA":
                 nn=st.text_area("Nguyên nhân",value=row.get("Nguyên nhân",""),height=60)
                 kp=st.text_area("Khắc phục",value=row.get("Khắc phục",""),height=60)
                 gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=50)
-                if st.form_submit_button("💾 Lưu",width='stretch'):
+                if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Mã CAPA":ma,"Số NCR":ncr,"Bộ phận":bp,"Thời hạn":th,
                         "Trạng thái CAPA":tt,"Nguyên nhân":nn,"Khắc phục":kp,"Người lập":nl,"Ghi chú":gc})
                     set_da_list("capa_data",lst_ref); ghi_log("CAPA","Cập nhật",f"Sửa {ma}"); st.rerun()
@@ -870,8 +870,8 @@ elif page == "🔧 Thiết bị đo":
             un=unames(); nl=c1.selectbox("Người lập",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             gc=c2.text_input("Ghi chú")
             b1,b2,_=st.columns([1.5,1.5,6])
-            ok=b1.form_submit_button("✅ Đăng ký",width='stretch')
-            ca=b2.form_submit_button("❌ Hủy",width='stretch')
+            ok=b1.form_submit_button("✅ Đăng ký",use_container_width=True)
+            ca=b2.form_submit_button("❌ Hủy",use_container_width=True)
             if ok:
                 if ma and ten:
                     dev_lst.append({"Mã TB":ma,"Tên thiết bị":ten,"Số serie":ser or "-","Vị trí":vt or "-",
@@ -899,7 +899,7 @@ elif page == "🔧 Thiết bị đo":
             un=unames(); cur_nl=row.get("Người lập","")
             nl=c1.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_tb_{idx}")
             gc=c2.text_input("Ghi chú",value=row.get("Ghi chú",""))
-            if st.form_submit_button("💾 Lưu",width='stretch'):
+            if st.form_submit_button("💾 Lưu",use_container_width=True):
                 lst_ref[idx].update({"Mã TB":ma,"Tên thiết bị":ten,"Số serie":ser,"Vị trí":vt,
                     "Chu kỳ HC":ck,"HC lần cuối":last,"Hạn HC":nxt,"Người lập":nl,"Tình trạng":tt,"Ghi chú":gc})
                 persist("dev_data"); ghi_log("TB","Cập nhật",f"Sửa {ma}"); st.rerun()
@@ -922,9 +922,9 @@ elif page == "🔧 Thiết bị đo":
                 with cdel.popover("🗑️ Xóa"):
                     st.warning(f"Xóa **{rid}**?")
                     cy,cn=st.columns(2)
-                    if cy.button("✅ Xác nhận",key=f"yes_tb_{ri}",width='stretch'):
+                    if cy.button("✅ Xác nhận",key=f"yes_tb_{ri}",use_container_width=True):
                         dev_lst.pop(ri); persist("dev_data"); ghi_log("TB","Xóa",f"Xóa {rid}"); st.rerun()
-                    cn.button("❌",key=f"no_tb_{ri}",width='stretch')
+                    cn.button("❌",key=f"no_tb_{ri}",use_container_width=True)
             else:
                 cedit.caption("🔒"); cdel.caption("—")
     else:
@@ -973,7 +973,7 @@ elif page == "📊 Báo cáo SPC":
                 df_imp=df_imp.dropna(how="all").reset_index(drop=True)
                 st.session_state.spc_df=df_imp
                 st.success(f"✅ {len(df_imp)} mẫu × {len(df_imp.columns)} cột")
-                st.dataframe(df_imp,width='stretch',hide_index=True)
+                st.dataframe(df_imp,use_container_width=True,hide_index=True)
             except Exception as e: st.error(f"Lỗi: {e}")
     st.write("")
     dv=[50.05,49.98,50.12,49.91,50.02,50.08,49.95,50.15,50.01,49.99,50.03,49.97,50.07,49.94,50.11]
@@ -1018,7 +1018,7 @@ elif page == "📊 Báo cáo SPC":
             df_par["%"]=( df_par["Số vụ"]/df_par["Số vụ"].sum()*100).round(1)
             df_par["% tích lũy"]=df_par["%"].cumsum().round(1)
             st.bar_chart(df_par.set_index("Dạng lỗi")["Số vụ"],color="#dc2626")
-            st.dataframe(df_par.style.bar(subset=["Số vụ"],color="#fdd5b1").format({"%":"{:.1f}%","% tích lũy":"{:.1f}%"}),width='stretch',hide_index=True)
+            st.dataframe(df_par.style.bar(subset=["Số vụ"],color="#fdd5b1").format({"%":"{:.1f}%","% tích lũy":"{:.1f}%"}),use_container_width=True,hide_index=True)
         with t3:
             r=np.abs(np.diff(vals,prepend=vals[0])); r_mean=r.mean(); r_ucl=r_mean*3.267
             wn=min(5,max(2,len(vals)//4)); ma=pd.Series(vals).rolling(wn,min_periods=1).mean().values
@@ -1062,7 +1062,7 @@ elif page == "📜 Nhật ký":
     if not df_l.empty:
         st.dataframe(df_l.style.set_properties(**{"font-size":"13px","padding":"8px 12px"})
             .set_table_styles([{"selector":"thead th","props":[("background","#f8fafc"),("font-weight","700"),("font-size","11px"),("color","#64748b"),("text-transform","uppercase"),("padding","10px 12px")]}]),
-            width='stretch',hide_index=True)
+            use_container_width=True,hide_index=True)
     else: st.info("Nhật ký trống.")
 
 # ══════════════════════════════════════════════════════════
@@ -1083,7 +1083,7 @@ elif page == "👤 Người dùng":
             "Trưởng QC":       ["❌","✅","❌","✅","❌","✅","✅","✅","✅","✅"],
             "Kiểm tra viên":   ["❌","❌","❌","❌","❌","✅","✅","✅","❌","✅ (đọc)"],
         })
-        st.dataframe(df_pq, width='stretch', hide_index=True)
+        st.dataframe(df_pq, use_container_width=True, hide_index=True)
 
     st.write("")
     if role in ["Quản lý","Trưởng QC"]:
@@ -1094,7 +1094,7 @@ elif page == "👤 Người dùng":
                 pw=c1.text_input("Mật khẩu *",type="password")
                 ro_o=["Quản lý","Trưởng QC","Kiểm tra viên"] if role=="Quản lý" else ["Kiểm tra viên"]
                 ro=c2.selectbox("Phân quyền",ro_o)
-                if st.form_submit_button("💾 Tạo",width='stretch'):
+                if st.form_submit_button("💾 Tạo",use_container_width=True):
                     if nm and un_ and pw:
                         if any(u["Tài khoản"]==un_ for u in st.session_state.users_list):
                             st.error("Tài khoản đã tồn tại!")
@@ -1114,7 +1114,7 @@ elif page == "👤 Người dùng":
     st.dataframe(pd.DataFrame(ud).style.map(c_role,subset=["Phân quyền"])
         .set_properties(**{"font-size":"13px","padding":"8px 12px"})
         .set_table_styles([{"selector":"thead th","props":[("background","#f8fafc"),("font-weight","700"),("font-size","11px"),("color","#64748b"),("text-transform","uppercase"),("padding","10px 12px")]}]),
-        width='stretch',hide_index=True)
+        use_container_width=True,hide_index=True)
 
     st.write(""); st.markdown("##### ✏️ Thao tác tài khoản")
     for i,u in enumerate(st.session_state.users_list):
@@ -1136,7 +1136,7 @@ elif page == "👤 Người dùng":
                         else: ro2=u["Phân quyền"]; st.caption(f"Phân quyền: {ro2}")
                         tt_o2=["Hoạt động","Tạm khóa"]; cur_tt2=u.get("Trạng thái","Hoạt động")
                         tt2=st.selectbox("Trạng thái",tt_o2,index=tt_o2.index(cur_tt2) if cur_tt2 in tt_o2 else 0,key=f"tt_eu_{i}")
-                        if st.form_submit_button("💾 Lưu",width='stretch'):
+                        if st.form_submit_button("💾 Lưu",use_container_width=True):
                             if un2!=u["Tài khoản"] and any(x["Tài khoản"]==un2 for j,x in enumerate(st.session_state.users_list) if j!=i):
                                 st.error("Tài khoản đã tồn tại!")
                             else:
@@ -1146,7 +1146,7 @@ elif page == "👤 Người dùng":
                 with cb.popover("🔑 Đổi pass"):
                     with st.form(f"frm_pw2_{i}"):
                         p1=st.text_input("Mật khẩu mới",type="password"); p2=st.text_input("Xác nhận",type="password")
-                        if st.form_submit_button("✅ Xác nhận",width='stretch'):
+                        if st.form_submit_button("✅ Xác nhận",use_container_width=True):
                             if not p1: st.error("Trống!")
                             elif p1!=p2: st.error("Không khớp!")
                             else:
