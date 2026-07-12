@@ -180,7 +180,9 @@ def upload_file_to_drive(file_name, file_content, folder_id=None):
     """Upload file lên Google Drive"""
     try:
         drive = _get_drive_client_pro()
-        if drive is None: return None
+        if drive is None: 
+            print(f"[Google Drive] Client not initialized for {file_name}")
+            return None
         
         file_metadata = {"name": file_name}
         if folder_id:
@@ -189,8 +191,11 @@ def upload_file_to_drive(file_name, file_content, folder_id=None):
         from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
         media = MediaInMemoryUpload(file_content, resumable=True)
         file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        return file.get("id")
-    except Exception:
+        file_id = file.get("id")
+        print(f"[Google Drive] ✅ Uploaded {file_name} -> {file_id}")
+        return file_id
+    except Exception as e:
+        print(f"[Google Drive] ❌ Error uploading {file_name}: {str(e)}")
         return None
 
 def list_drive_files(folder_id=None, query_filter=None):
