@@ -124,11 +124,17 @@ def _gs_load(key: str):
     """Đọc 1 sheet tab. Hỗ trợ cả dict-of-lists và list thuần."""
     try:
         ss = _get_spreadsheet_pro()
-        if ss is None: return None
+        if ss is None: 
+            print(f"[GSheets] _gs_load({key}): Spreadsheet is None")
+            return None
         ws = _ensure_sheet_pro(ss, key)
         records = ws.get_all_records(default_blank="")
-        if not records: return DEFAULTS.get(key)
+        if not records: 
+            print(f"[GSheets] _gs_load({key}): No records found, using default")
+            return DEFAULTS.get(key)
 
+        print(f"[GSheets] ✅ Loaded {key}: {len(records)} records")
+        
         is_dict_type = key in ("iqc_data","ipqc_data","oqc_data","ncr_data","capa_data")
         if is_dict_type:
             result = {}
@@ -155,7 +161,8 @@ def _gs_load(key: str):
                     else: row[k] = v
                 result.append(row)
             return result
-    except Exception:
+    except Exception as e:
+        print(f"[GSheets] ❌ _gs_load({key}) ERROR: {type(e).__name__}: {e}")
         return None
 
 def _gs_save(key: str, data) -> bool:
