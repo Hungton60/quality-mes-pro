@@ -358,20 +358,47 @@ def restore_all(data_bytes: bytes, session_state) -> tuple:
 
 def gs_status_pro() -> dict:
     try:
-        # Debug: kiểm tra secrets
-        if not hasattr(st, "secrets"):
-            return {"connected": False, "message": "Lưu local (JSON) — No secrets"}
-        if "gcp_service_account_pro" not in st.secrets:
-            return {"connected": False, "message": "Lưu local (JSON) — No gcp_service_account_pro in secrets"}
-        if "spreadsheet_id_pro" not in st.secrets:
-            return {"connected": False, "message": "Lưu local (JSON) — No spreadsheet_id_pro in secrets"}
+        import gspread
+        from google.oauth2.service_account import Credentials
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+                  "https://www.googleapis.com/auth/drive"]
         
-        ss = _get_spreadsheet_pro()
-        if ss is None:
-            return {"connected": False, "message": "Lưu local (JSON) — Client init failed"}
-        return {"connected": True, "message": f"Đã kết nối: {ss.title}"}
+        if not hasattr(st, "secrets"):
+            return {"connected": False, "message": "Lưu local — No secrets object"}
+        if "gcp_service_account_pro" not in st.secrets:
+            return {"connected": False, "message": "Lưu local — Missing gcp_service_account_pro"}
+        if "spreadsheet_id_pro" not in st.secrets:
+            return {"connected": False, "message": "Lưu local — Missing spreadsheet_id_pro"}
+        
+        # Thử đọc credentials
+        try:
+            raw = st.secrets["gcp_service_account_pro"]
+            creds_dict = {k: v for k, v in raw.items()}
+        except Exception as e:
+            return {"connected": False, "message": f"Lưu local — Đọc creds lỗi: {e}"}
+        
+        # Thử tạo credentials
+        try:
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        except Exception as e:
+            return {"connected": False, "message": f"Lưu local — Tạo creds lỗi: {e}"}
+        
+        # Thử kết nối gspread
+        try:
+            gc = gspread.authorize(creds)
+        except Exception as e:
+            return {"connected": False, "message": f"Lưu local — gspread lỗi: {e}"}
+        
+        # Thử mở spreadsheet
+        try:
+            sid = st.secrets["spreadsheet_id_pro"]
+            ss = gc.open_by_key(sid)
+            return {"connected": True, "message": f"Đã kết nối: {ss.title}"}
+        except Exception as e:
+            return {"connected": False, "message": f"Lưu local — Mở sheet lỗi: {e}"}
+    
     except Exception as e:
-        return {"connected": False, "message": f"Lỗi: {e}"}
+        return {"connected": False, "message": f"Lỗi tổng: {e}"}
 
 def drive_status_pro() -> dict:
     """Kiểm tra kết nối Google Drive"""
