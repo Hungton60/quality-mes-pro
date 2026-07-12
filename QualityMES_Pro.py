@@ -615,17 +615,25 @@ def form_iqc():
 
             # ✅ GOOGLE DRIVE UPLOAD (không dùng st.empty trong form)
             drive_files = []
+            upload_errors = []
             if up:
                 for file in up:
-                    file_id = upload_file_to_drive(
+                    success, msg, file_id = upload_file_to_drive(
                         file_name=file.name,
                         file_content=file.getvalue()
                     )
-                    if file_id:
+                    if success and file_id:
                         drive_url = get_drive_file_download_url(file_id)
                         drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                    elif not success:
+                        upload_errors.append(msg)
 
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
+                # ✅ FIX: Hiển thị lỗi upload nếu có
+                if upload_errors:
+                    for err_msg in upload_errors:
+                        st.error(err_msg)
+                
                 if sp and vt:
                     lst.append({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc or "-","Lô":lo or "-",
                         "SL mẫu":sl or "-","Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
@@ -636,9 +644,10 @@ def form_iqc():
                     clear_draft("iqc_form")
                     draft_key = f"iqc_draft_{st.session_state.active_project}"
                     st.session_state[draft_key] = None
-                    # Hiện kết quả upload Drive
+                    # ✅ FIX: Hiển thị thành công upload
                     if drive_files:
                         st.session_state["last_drive_upload"] = drive_files
+                        st.success(f"✅ Đã upload {len(drive_files)} file thành công!")
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
 

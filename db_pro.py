@@ -33,7 +33,7 @@ def _path(k): return DATA_DIR / f"pro_{k}.json"
 # ══════════════════════════════════════════════════════════
 @st.cache_resource
 def _get_gspread_client_pro():
-    """Cache kết nối Google Sheets"""
+    """Cache kết nối Google Sheets - with timeout protection"""
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -59,11 +59,13 @@ def _get_gspread_client_pro():
             return None
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        # ✅ FIX: Set timeout để tránh hanging
         client = gspread.authorize(creds)
+        client.session.timeout = 10  # 10 giây timeout
         print("[GSheets] ✅ Connected!")
         return client
     except Exception as e:
-        print(f"[GSheets] ❌ Error: {e}")
+        print(f"[GSheets] ❌ Error: {type(e).__name__}: {e}")
         return None
 
 @st.cache_resource
@@ -181,7 +183,11 @@ def _gs_save(key: str, data) -> bool:
                 for k in all_keys:
                     v = row.get(k, "")
                     if isinstance(v, list): v = json.dumps(v, ensure_ascii=False)
-                    r.append(str(v) if v is not None else "")
+                    # ✅ FIX: Giữ nguyên kiểu số nếu là số, không convert sang str
+                    if isinstance(v, (int, float)) and v != "":
+                        r.append(v)
+                    else:
+                        r.append(str(v) if v is not None else "")
                 rows_to_write.append(r)
             ws.append_rows(rows_to_write, value_input_option="RAW")
         else:
@@ -194,23 +200,29 @@ def _gs_save(key: str, data) -> bool:
                 for k in all_keys:
                     v = row.get(k, "")
                     if isinstance(v, list): v = json.dumps(v, ensure_ascii=False)
-                    r.append(str(v) if v is not None else "")
+                    # ✅ FIX: Giữ nguyên kiểu số nếu là số, không convert sang str
+                    if isinstance(v, (int, float)) and v != "":
+                        r.append(v)
+                    else:
+                        r.append(str(v) if v is not None else "")
                 rows_to_write.append(r)
             ws.append_rows(rows_to_write, value_input_option="RAW")
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[GSheets Save Error] {e}")
         return False
 
 # ══════════════════════════════════════════════════════════
 # GOOGLE DRIVE — File Management
 # ══════════════════════════════════════════════════════════
 def upload_file_to_drive(file_name, file_content, folder_id=None):
-    """Upload file lên Google Drive"""
+    """Upload file lên Google Drive - return (success, message, file_id)"""
     try:
         drive = _get_drive_client_pro()
         if drive is None: 
-            print(f"[Google Drive] Client not initialized for {file_name}")
-            return None
+            msg = f"[Google Drive] Client not initialized for {file_name}"
+            print(msg)
+            return False, msg, None
         
         file_metadata = {"name": file_name}
         if folder_id:
@@ -220,11 +232,13 @@ def upload_file_to_drive(file_name, file_content, folder_id=None):
         media = MediaInMemoryUpload(file_content, resumable=True)
         file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
         file_id = file.get("id")
-        print(f"[Google Drive] ✅ Uploaded {file_name} -> {file_id}")
-        return file_id
+        msg = f"✅ Đã upload {file_name} thành công"
+        print(f"[Google Drive] {msg} -> {file_id}")
+        return True, msg, file_id
     except Exception as e:
-        print(f"[Google Drive] ❌ Error uploading {file_name}: {str(e)}")
-        return None
+        msg = f"❌ Lỗi upload {file_name}: {str(e)}"
+        print(msg)
+        return False, msg, None
 
 def list_drive_files(folder_id=None, query_filter=None):
     """Liệt kê file trên Google Drive"""
