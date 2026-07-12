@@ -395,7 +395,9 @@ def gs_status_pro() -> dict:
             ss = gc.open_by_key(sid)
             return {"connected": True, "message": f"Đã kết nối: {ss.title}"}
         except Exception as e:
-            return {"connected": False, "message": f"Lưu local — Mở sheet lỗi: {e}"}
+            import traceback
+            err_detail = traceback.format_exc()
+            return {"connected": False, "message": f"Mở sheet lỗi: {str(e)[:200]}"}
     
     except Exception as e:
         return {"connected": False, "message": f"Lỗi tổng: {e}"}
