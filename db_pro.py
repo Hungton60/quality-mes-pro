@@ -61,13 +61,13 @@ def _get_gspread_client_pro():
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         # ✅ FIX: Set timeout để tránh hanging
         client = gspread.authorize(creds)
-        client.session.timeout = 10  # 10 giây timeout
         print("[GSheets] ✅ Connected!")
         return client
     except Exception as e:
         print(f"[GSheets] ❌ Error: {type(e).__name__}: {e}")
         return None
 
+@st.cache_resource
 @st.cache_resource
 def _get_drive_client_pro():
     """Cache kết nối Google Drive"""
@@ -135,7 +135,7 @@ def _gs_load(key: str):
             print(f"[GSheets] _gs_load({key}): Spreadsheet is None")
             return None
         ws = _ensure_sheet_pro(ss, key)
-        records = ws.get_all_records(default_blank="")
+        records = ws.get_all_records(default_blank="", numericise_ignore=["all"])
         if not records: 
             print(f"[GSheets] _gs_load({key}): No records found, using default")
             return DEFAULTS.get(key)
@@ -229,6 +229,8 @@ def _gs_save(key: str, data) -> bool:
 # ══════════════════════════════════════════════════════════
 # GOOGLE DRIVE — File Management
 # ══════════════════════════════════════════════════════════
+DEFAULT_DRIVE_FOLDER_ID = "0ANp3jJIUA1npUk9PVA"
+
 def upload_file_to_drive(file_name, file_content, folder_id=None):
     """Upload file lên Google Drive - return (success, message, file_id)"""
     try:
@@ -238,13 +240,17 @@ def upload_file_to_drive(file_name, file_content, folder_id=None):
             print(msg)
             return False, msg, None
         
-        file_metadata = {"name": file_name}
-        if folder_id:
-            file_metadata["parents"] = [folder_id]
+        target_folder = folder_id or DEFAULT_DRIVE_FOLDER_ID
+        file_metadata = {"name": file_name, "parents": [target_folder]}
         
-        from googleapiclient.http import MediaFileUpload, MediaInMemoryUpload
-        media = MediaInMemoryUpload(file_content, resumable=True)
-        file = drive.files().create(body=file_metadata, media_body=media, fields="id").execute()
+        from googleapiclient.http import MediaInMemoryUpload
+        media = MediaInMemoryUpload(file_content, resumable=False)
+        file = drive.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields="id",
+            supportsAllDrives=True
+        ).execute()
         file_id = file.get("id")
         msg = f"✅ Đã upload {file_name} thành công"
         print(f"[Google Drive] {msg} -> {file_id}")
@@ -272,45 +278,31 @@ def list_drive_files(folder_id=None, query_filter=None):
         return []
 
 def get_drive_file_download_url(file_id):
-    """✅ FIX LỖI 4: Link xem file trực tiếp trên web, không cần IT"""
-    return f"https://drive.google.com/file/d/{file_id}/view"
+    """Lấy link download file từ Google Drive"""
+    return f"https://drive.google.com/uc?id={file_id}&export=download"
 
 # ══════════════════════════════════════════════════════════
 # SESSION PERSISTENCE — Giữ đăng nhập khi reload
 # ══════════════════════════════════════════════════════════
 def save_session_token(user_account):
-    """Lưu session token vào Streamlit session_state (tồn tại trong tab hiện tại)"""
-    try:
-        import streamlit as st
-        st.session_state["_session_account"] = user_account
-        st.session_state["_session_expires"] = datetime.now().timestamp() + 86400 * 7
-        # Cũng lưu local để backup
-        token = {
-            "account": user_account,
-            "timestamp": datetime.now().isoformat(),
-            "expires": (datetime.now().timestamp() + 86400 * 7)
-        }
-        token_path = DATA_DIR / "session_token.json"
-        token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    """Lưu session token vào file local (bảo mật cơ bản)"""
+    token = {
+        "account": user_account,
+        "timestamp": datetime.now().isoformat(),
+        "expires": (datetime.now().timestamp() + 86400 * 7)  # 7 ngày
+    }
+    token_path = DATA_DIR / "session_token.json"
+    token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
 
 def load_session_token():
-    """Load session token — kiểm tra session_state trước, sau đó file local"""
+    """Load session token và kiểm tra hạn"""
     try:
-        import streamlit as st
-        # Kiểm tra session_state trước (nhanh nhất)
-        if "_session_account" in st.session_state:
-            expires = st.session_state.get("_session_expires", 0)
-            if datetime.now().timestamp() < expires:
-                return st.session_state["_session_account"]
-        # Fallback: đọc file local
         token_path = DATA_DIR / "session_token.json"
         if not token_path.exists():
             return None
         token = json.loads(token_path.read_text(encoding="utf-8"))
         if datetime.now().timestamp() > token.get("expires", 0):
-            token_path.unlink()
+            token_path.unlink()  # Xóa token hết hạn
             return None
         return token.get("account")
     except Exception:
@@ -319,9 +311,6 @@ def load_session_token():
 def clear_session_token():
     """Xóa session token khi đăng xuất"""
     try:
-        import streamlit as st
-        st.session_state.pop("_session_account", None)
-        st.session_state.pop("_session_expires", None)
         token_path = DATA_DIR / "session_token.json"
         if token_path.exists():
             token_path.unlink()
@@ -359,49 +348,79 @@ def clear_draft(form_key):
 # PUBLIC API
 # ══════════════════════════════════════════════════════════
 def load_all() -> dict:
-    """Đọc toàn bộ — thử Google Sheets trước, fallback JSON local."""
-    # ✅ FIX: Clear cache để force kết nối mới
-    try:
-        _get_gspread_client_pro.clear()
-        _get_drive_client_pro.clear()
-    except Exception:
-        pass
-
+    """Đọc toàn bộ — batch load tất cả sheets 1 lần để tăng tốc"""
     result = {}
-    gs_ok = False  # Track xem GSheets có hoạt động không
+    gs_ok = False
 
-    for k in KEYS:
-        gs_data = _gs_load(k)
-        if gs_data is not None:
-            # Lưu backup local
-            try:
-                _path(k).write_text(json.dumps(gs_data, ensure_ascii=False, indent=2), encoding="utf-8")
-            except Exception:
-                pass
-            result[k] = gs_data
-            gs_ok = True
-            continue
+    try:
+        ss = _get_spreadsheet_pro()
+        if ss is not None:
+            # ✅ Load tất cả worksheets 1 lần (batch)
+            all_ws = {ws.title: ws for ws in ss.worksheets()}
+            for k in KEYS:
+                try:
+                    if k not in all_ws:
+                        ws = ss.add_worksheet(title=k, rows=1000, cols=26)
+                    else:
+                        ws = all_ws[k]
+                    records = ws.get_all_records(default_blank="", numericise_ignore=["all"])
+                    if not records:
+                        print(f"[GSheets] _gs_load({k}): No records found, using default")
+                        result[k] = DEFAULTS.get(k)
+                        continue
+                    print(f"[GSheets] ✅ Loaded {k}: {len(records)} records")
+                    gs_ok = True
+                    is_dict = k in ("iqc_data","ipqc_data","oqc_data","ncr_data","capa_data")
+                    if is_dict:
+                        r = {}
+                        for rec in records:
+                            da = rec.get("_project_code","")
+                            if not da: continue
+                            row = {kk: (json.loads(v) if isinstance(v,str) and v.startswith("[") else v)
+                                   for kk,v in rec.items() if kk != "_project_code"}
+                            r.setdefault(da,[]).append(row)
+                        result[k] = r
+                    else:
+                        result[k] = [{kk: (json.loads(v) if isinstance(v,str) and v.startswith("[") else v)
+                                      for kk,v in rec.items()} for rec in records]
+                    # Backup local
+                    try: _path(k).write_text(json.dumps(result[k], ensure_ascii=False), encoding="utf-8")
+                    except: pass
+                except Exception as e:
+                    print(f"[GSheets] ❌ Error {k}: {e}")
+                    result[k] = _local_backup(k)
+    except Exception as e:
+        print(f"[GSheets] ❌ load_all: {e}")
+        for k in KEYS: result[k] = _local_backup(k)
 
-        # Fallback: đọc JSON local (backup từ lần trước)
-        p = _path(k)
-        if p.exists():
-            try:
-                local_data = json.loads(p.read_text(encoding="utf-8"))
-                result[k] = local_data
-                print(f"[Local] ✅ Loaded {k} from local backup")
-                continue
-            except Exception:
-                pass
-
-        result[k] = DEFAULTS.get(k)
-
-    print(f"[load_all] GSheets: {'✅ OK' if gs_ok else '❌ Failed, using local/default'}")
+    print(f"[load_all] {'✅ GSheets OK' if gs_ok else '⚠️ Local backup'}")
     return result
 
+def _local_backup(k):
+    p = _path(k)
+    if p.exists():
+        try: return json.loads(p.read_text(encoding="utf-8"))
+        except: pass
+    return DEFAULTS.get(k)
+
 def save_key(key: str, data) -> None:
-    """Ghi 1 key — luôn ghi JSON local, thêm Google Sheets nếu đã cấu hình."""
-    _path(key).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    _gs_save(key, data)
+    """Ghi 1 key — lưu local ngay, ghi GSheets trong background thread"""
+    import threading
+    # ✅ Lưu local ngay lập tức (nhanh)
+    try:
+        _path(key).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"[Local Save Error] {e}")
+    
+    # ✅ Ghi GSheets trong background (không block UI)
+    def _bg_save():
+        try:
+            _gs_save(key, data)
+        except Exception as e:
+            print(f"[GSheets BG Save Error] {e}")
+    
+    t = threading.Thread(target=_bg_save, daemon=True)
+    t.start()
 
 def backup_all(session_state) -> bytes:
     backup = {k: session_state.get(k, DEFAULTS.get(k)) for k in KEYS}
