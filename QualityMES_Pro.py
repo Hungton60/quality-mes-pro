@@ -11,7 +11,7 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
 import time
 
 # ✅ FIX LỖI 1: Không load Google Sheets khi chưa đăng nhập
-@st.cache_data(ttl=60, show_spinner=False)
+
 def cached_load_all():
     return load_all()
 
