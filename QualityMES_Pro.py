@@ -11,7 +11,7 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
 import time
 
 # ✅ FIX LỖI 1: Không load Google Sheets khi chưa đăng nhập
-
+@st.cache_data(ttl=300, show_spinner=False)
 def cached_load_all():
     return load_all()
 
@@ -86,7 +86,7 @@ hr{border-color:#f1f5f9!important;margin:8px 0!important}
 # SESSION STATE
 # ══════════════════════════════════════════════════════════
 def _load_data_from_sheets():
-    """✅ FIX LỖI 1+2: Load data sau khi đăng nhập, không load trước"""
+    """Load data sau khi đăng nhập - dùng cache 5 phút"""
     if not st.session_state.get("_data_loaded", False):
         data = cached_load_all()
         for k in ["users_list","project_list","iqc_data","ipqc_data",
@@ -94,6 +94,7 @@ def _load_data_from_sheets():
             if k in data and data[k]:
                 st.session_state[k] = data[k]
         st.session_state["_data_loaded"] = True
+        st.session_state["_users_loaded"] = True  # Không cần load users lại
 
 def _init(k, v):
     if k not in st.session_state:
@@ -270,6 +271,14 @@ def table_actions(data_list_ref, id_field, phane, data_key, edit_fn,
 # ══════════════════════════════════════════════════════════
 # LOGIN
 # ══════════════════════════════════════════════════════════
+# ✅ FIX: Load users_list từ GSheets TRƯỚC KHI check login
+# Để user thường đăng nhập được sau khi reload
+if st.session_state.current_user is None and not st.session_state.get("_users_loaded", False):
+    _data = cached_load_all()  # Dùng cache thay vì load_all() trực tiếp
+    if _data.get("users_list"):
+        st.session_state["users_list"] = _data["users_list"]
+    st.session_state["_users_loaded"] = True
+
 if st.session_state.current_user is None:
     # ✅ Kiểm tra session token cũ
     saved_account = load_session_token()
@@ -615,6 +624,7 @@ def form_iqc():
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
+        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
@@ -623,58 +633,57 @@ def form_iqc():
             un=unames(); nk=c1.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c2.date_input("Ngày kiểm",value=date.today()); gi=c1.time_input("Giờ kiểm",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=100)
-            up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
-            
-            # ✅ AUTO-SAVE DRAFT khi nhập liệu
+
+            # ✅ AUTO-SAVE DRAFT
             draft_key = f"iqc_draft_{st.session_state.active_project}"
             if sp or vt:
-                draft_data = {
-                    "số_phiếu": sp, "tên_vật_tư": vt,
+                draft_data = {"số_phiếu": sp, "tên_vật_tư": vt,
                     "nhà_cung_cấp": nc, "lô": lo,
-                    "saved_at": datetime.now().strftime("%H:%M:%S")
-                }
+                    "saved_at": datetime.now().strftime("%H:%M:%S")}
                 save_draft("iqc_form", draft_data)
                 st.session_state[draft_key] = draft_data
 
-            # ✅ GOOGLE DRIVE UPLOAD (không dùng st.empty trong form)
-            drive_files = []
-            upload_errors = []
-            if up:
-                for file in up:
-                    success, msg, file_id = upload_file_to_drive(
-                        file_name=file.name,
-                        file_content=file.getvalue()
-                    )
-                    if success and file_id:
-                        drive_url = get_drive_file_download_url(file_id)
-                        drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
-                    elif not success:
-                        upload_errors.append(msg)
-
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
-                # ✅ FIX: Hiển thị lỗi upload nếu có
-                if upload_errors:
-                    for err_msg in upload_errors:
-                        st.error(err_msg)
-                
                 if sp and vt:
                     lst.append({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc or "-","Lô":lo or "-",
                         "SL mẫu":sl or "-","Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
-                        "Người kiểm":nk,"Files":[f.name for f in up] if up else [],
-                        "drive_files": drive_files,
+                        "Người kiểm":nk,"Files":[],"drive_files":[],
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
                     set_da_list("iqc_data",lst)
                     clear_draft("iqc_form")
-                    draft_key = f"iqc_draft_{st.session_state.active_project}"
                     st.session_state[draft_key] = None
-                    # ✅ FIX: Hiển thị thành công upload
-                    if drive_files:
-                        st.session_state["last_drive_upload"] = drive_files
-                        st.success(f"✅ Đã upload {len(drive_files)} file thành công!")
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
 
     def edit_iqc(idx,row,lst_ref,dk):
+        # ✅ FIX: Upload NGOÀI form để tránh conflict
+        cur_drive_files = list(row.get("drive_files", []))
+        if cur_drive_files:
+            st.markdown("**📎 Files đã upload:**")
+            for f in cur_drive_files:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
+        
+        new_up = st.file_uploader("➕ Upload file lên Google Drive",
+            accept_multiple_files=True,
+            type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+            key=f"up_iqc_{idx}")
+        
+        if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_iqc_{idx}"):
+            new_drive_files = list(cur_drive_files)
+            for file in new_up:
+                success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                if success and file_id:
+                    drive_url = get_drive_file_download_url(file_id)
+                    new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                    st.success(f"✅ Đã upload {file.name}")
+                else:
+                    st.error(msg)
+            file_names = [f["name"] for f in new_drive_files]
+            lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
+            set_da_list("iqc_data", lst_ref)
+            ghi_log("IQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}") 
+            st.rerun()
+
         with st.form(f"frm_eiqc_{idx}"):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu",value=row.get("Số phiếu","")); vt=c2.text_input("Tên vật tư",value=row.get("Tên vật tư",""))
@@ -685,13 +694,9 @@ def form_iqc():
             un=unames(); cur_nk=row.get("Người kiểm","")
             nk=c1.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_iqc_{idx}")
             gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
-            cur_files=list(row.get("Files",[]));
-            if cur_files: st.markdown("**Files hiện tại:** "+", ".join(f"`{f}`" for f in cur_files))
-            new_up=st.file_uploader("➕ Thêm file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key=f"up_iqc_{idx}")
             if st.form_submit_button("💾 Lưu",use_container_width=True):
-                new_files=cur_files+([f.name for f in new_up] if new_up else [])
                 lst_ref[idx].update({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc,"Lô":lo,
-                    "SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc,"Files":new_files})
+                    "SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
                 set_da_list("iqc_data",lst_ref); ghi_log("IQC","Cập nhật",f"Sửa {sp}"); st.rerun()
 
     st.write("")
@@ -703,7 +708,31 @@ def form_ipqc():
     lst=get_da_list("ipqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     st.download_button("📥 CSV",data=csv,file_name=f"IPQC_{AP}.csv",mime="text/csv",key="dl_ipqc",disabled=not lst)
-    with st.expander("➕ Tạo phiếu IPQC mới"):
+    _show_ipqc = bool(st.session_state.get("last_created_ipqc"))
+    with st.expander("➕ Tạo phiếu IPQC mới", expanded=_show_ipqc):
+        last_ipqc = st.session_state.get("last_created_ipqc")
+        if last_ipqc:
+            st.success(f"✅ Đã tạo phiếu **{last_ipqc['sp']}**")
+            st.markdown("#### 📎 Upload file đính kèm ngay:")
+            up_now_ipqc = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="ipqc_upload_after")
+            c1u,c2u=st.columns(2)
+            if up_now_ipqc and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_ipqc"):
+                drive_files=[]
+                for file in up_now_ipqc:
+                    success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
+                    if success and file_id:
+                        drive_url=get_drive_file_download_url(file_id)
+                        drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
+                        st.success(f"✅ {file.name}")
+                    else: st.error(msg)
+                if drive_files:
+                    idx=last_ipqc["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
+                    lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
+                    set_da_list("ipqc_data",lst); st.session_state["last_created_ipqc"]=None
+                    st.session_state["last_drive_upload"]=drive_files; st.rerun()
+            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ipqc"):
+                st.session_state["last_created_ipqc"]=None; st.rerun()
+            st.divider()
         with st.form("frm_ipqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); cd=c2.text_input("Tên công đoạn *")
@@ -712,14 +741,15 @@ def form_ipqc():
             un=unames(); nk=c2.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=100)
-            up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and cd:
                     lst.append({"Số phiếu":sp,"Tên công đoạn":cd,"Lô":lo or "-","SL mẫu":sl or "-",
                         "Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
-                        "Người kiểm":nk,"Files":[f.name for f in up] if up else [],
+                        "Người kiểm":nk,"Files":[],"drive_files":[],
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                    set_da_list("ipqc_data",lst); ghi_log("IPQC","Tạo mới",f"Tạo {sp}"); st.rerun()
+                    set_da_list("ipqc_data",lst)
+                    st.session_state["last_created_ipqc"]={"sp":sp,"idx":len(lst)-1}
+                    ghi_log("IPQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên công đoạn")
     def edit_ipqc(idx,row,lst_ref,dk):
         with st.form(f"frm_eipqc_{idx}"):
@@ -744,7 +774,31 @@ def form_oqc():
     lst=get_da_list("oqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     st.download_button("📥 CSV",data=csv,file_name=f"OQC_{AP}.csv",mime="text/csv",key="dl_oqc",disabled=not lst)
-    with st.expander("➕ Tạo phiếu OQC mới"):
+    _show_oqc = bool(st.session_state.get("last_created_oqc"))
+    with st.expander("➕ Tạo phiếu OQC mới", expanded=_show_oqc):
+        last_oqc = st.session_state.get("last_created_oqc")
+        if last_oqc:
+            st.success(f"✅ Đã tạo phiếu **{last_oqc['sp']}**")
+            st.markdown("#### 📎 Upload file đính kèm ngay:")
+            up_now_oqc = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="oqc_upload_after")
+            c1u,c2u=st.columns(2)
+            if up_now_oqc and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_oqc"):
+                drive_files=[]
+                for file in up_now_oqc:
+                    success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
+                    if success and file_id:
+                        drive_url=get_drive_file_download_url(file_id)
+                        drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
+                        st.success(f"✅ {file.name}")
+                    else: st.error(msg)
+                if drive_files:
+                    idx=last_oqc["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
+                    lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
+                    set_da_list("oqc_data",lst); st.session_state["last_created_oqc"]=None
+                    st.session_state["last_drive_upload"]=drive_files; st.rerun()
+            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_oqc"):
+                st.session_state["last_created_oqc"]=None; st.rerun()
+            st.divider()
         with st.form("frm_oqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); spn=c2.text_input("Mã/Tên sản phẩm *")
@@ -753,14 +807,15 @@ def form_oqc():
             un=unames(); nk=c2.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
             ng=c1.date_input("Ngày kiểm",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
             gc=st.text_area("Ghi chú",height=100)
-            up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
             if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
                 if sp and spn:
                     lst.append({"Số phiếu":sp,"Mã/Tên SP":spn,"Lô":lo or "-","SL mẫu":sl or "-",
                         "Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
-                        "Người kiểm":nk,"Files":[f.name for f in up] if up else [],
+                        "Người kiểm":nk,"Files":[],"drive_files":[],
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                    set_da_list("oqc_data",lst); ghi_log("OQC","Tạo mới",f"Tạo {sp}"); st.rerun()
+                    set_da_list("oqc_data",lst)
+                    st.session_state["last_created_oqc"]={"sp":sp,"idx":len(lst)-1}
+                    ghi_log("OQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Mã/Tên sản phẩm")
     def edit_oqc(idx,row,lst_ref,dk):
         with st.form(f"frm_eoqc_{idx}"):
@@ -796,7 +851,31 @@ elif page == "⚠️ NCR + CAPA":
         lst=get_da_list("ncr_data")
         csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
         st.download_button("📥 CSV",data=csv,file_name=f"NCR_{AP}.csv",mime="text/csv",key="dl_ncr",disabled=not lst)
-        with st.expander("➕ Tạo NCR mới"):
+        _show_ncr = bool(st.session_state.get("last_created_ncr"))
+        with st.expander("➕ Tạo NCR mới", expanded=_show_ncr):
+            last_ncr = st.session_state.get("last_created_ncr")
+            if last_ncr:
+                st.success(f"✅ Đã tạo NCR **{last_ncr['sp']}**")
+                st.markdown("#### 📎 Upload file đính kèm ngay:")
+                up_now_ncr = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="ncr_upload_after")
+                c1u,c2u=st.columns(2)
+                if up_now_ncr and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_ncr"):
+                    drive_files=[]
+                    for file in up_now_ncr:
+                        success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
+                        if success and file_id:
+                            drive_url=get_drive_file_download_url(file_id)
+                            drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
+                            st.success(f"✅ {file.name}")
+                        else: st.error(msg)
+                    if drive_files:
+                        idx=last_ncr["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
+                        lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
+                        set_da_list("ncr_data",lst); st.session_state["last_created_ncr"]=None
+                        st.session_state["last_drive_upload"]=drive_files; st.rerun()
+                if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ncr"):
+                    st.session_state["last_created_ncr"]=None; st.rerun()
+                st.divider()
             with st.form("frm_ncr_new",clear_on_submit=True):
                 c1,c2=st.columns(2)
                 so=c1.text_input("Số NCR *"); ten=c2.text_input("Tên vật tư/SP *")
@@ -807,14 +886,15 @@ elif page == "⚠️ NCR + CAPA":
                 nl=c2.selectbox("Người lập",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
                 ng=c1.date_input("Ngày",value=date.today()); gi=c2.time_input("Giờ",value=datetime.now().time())
                 gc=st.text_area("Ghi chú",height=100)
-                up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
                 if st.form_submit_button("✅ Tạo NCR",use_container_width=True):
                     if so and ten:
                         lst.append({"Số NCR":so,"Tên vật tư/SP":ten,"Lô":lo or "-","SL phát hiện":sl or "-",
                             "Thời gian":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
                             "Người phát hiện":ph,"Người lập":nl,"Mức độ":md,"Trạng thái":tt,
-                            "Files":[f.name for f in up] if up else [],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                        set_da_list("ncr_data",lst); ghi_log("NCR","Tạo mới",f"Tạo {so}"); st.rerun()
+                            "Files":[],"drive_files":[],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
+                        set_da_list("ncr_data",lst)
+                        st.session_state["last_created_ncr"]={"sp":so,"idx":len(lst)-1}
+                        ghi_log("NCR","Tạo mới",f"Tạo {so}"); st.rerun()
                     else: st.error("Điền Số NCR và Tên vật tư/SP")
         def edit_ncr(idx,row,lst_ref,dk):
             with st.form(f"frm_encr_{idx}"):
@@ -840,7 +920,31 @@ elif page == "⚠️ NCR + CAPA":
         lst=get_da_list("capa_data")
         csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
         st.download_button("📥 CSV",data=csv,file_name=f"CAPA_{AP}.csv",mime="text/csv",key="dl_capa",disabled=not lst)
-        with st.expander("➕ Tạo CAPA mới"):
+        _show_capa = bool(st.session_state.get("last_created_capa"))
+        with st.expander("➕ Tạo CAPA mới", expanded=_show_capa):
+            last_capa = st.session_state.get("last_created_capa")
+            if last_capa:
+                st.success(f"✅ Đã tạo CAPA **{last_capa['sp']}**")
+                st.markdown("#### 📎 Upload file đính kèm ngay:")
+                up_now_capa = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="capa_upload_after")
+                c1u,c2u=st.columns(2)
+                if up_now_capa and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_capa"):
+                    drive_files=[]
+                    for file in up_now_capa:
+                        success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
+                        if success and file_id:
+                            drive_url=get_drive_file_download_url(file_id)
+                            drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
+                            st.success(f"✅ {file.name}")
+                        else: st.error(msg)
+                    if drive_files:
+                        idx=last_capa["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
+                        lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
+                        set_da_list("capa_data",lst); st.session_state["last_created_capa"]=None
+                        st.session_state["last_drive_upload"]=drive_files; st.rerun()
+                if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_capa"):
+                    st.session_state["last_created_capa"]=None; st.rerun()
+                st.divider()
             with st.form("frm_capa_new",clear_on_submit=True):
                 c1,c2=st.columns(2)
                 ma=c1.text_input("Mã CAPA *"); ncr=c2.text_input("Số NCR liên kết")
@@ -851,14 +955,15 @@ elif page == "⚠️ NCR + CAPA":
                 kp=st.text_area("Hành động khắc phục",height=100)
                 pn=st.text_area("Hành động phòng ngừa",height=100)
                 gc=st.text_area("Ghi chú",height=50)
-                up=st.file_uploader("📎 Đính kèm",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"])
                 if st.form_submit_button("✅ Tạo CAPA",use_container_width=True):
                     if ma:
                         lst.append({"Mã CAPA":ma,"Số NCR":ncr or "-","Nguyên nhân":nn or "-",
                             "Khắc phục":kp or "-","Phòng ngừa":pn or "-","Bộ phận":bp or "-",
                             "Thời hạn":th.strftime("%d-%m-%Y"),"Người lập":nl,"Trạng thái CAPA":tt,
-                            "Files":[f.name for f in up] if up else [],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                        set_da_list("capa_data",lst); ghi_log("CAPA","Tạo mới",f"Tạo {ma}"); st.rerun()
+                            "Files":[],"drive_files":[],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
+                        set_da_list("capa_data",lst)
+                        st.session_state["last_created_capa"]={"sp":ma,"idx":len(lst)-1}
+                        ghi_log("CAPA","Tạo mới",f"Tạo {ma}"); st.rerun()
                     else: st.error("Điền Mã CAPA")
         def edit_capa(idx,row,lst_ref,dk):
             with st.form(f"frm_ecapa_{idx}"):
