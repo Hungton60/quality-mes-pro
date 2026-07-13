@@ -11,7 +11,7 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
 import time
 
 # ✅ CACHE load_all để tránh reload từ Google Sheets mỗi lần
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=0, show_spinner=False)
 def cached_load_all():
     return load_all()
 
