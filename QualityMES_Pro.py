@@ -193,7 +193,12 @@ def c_tinhtrang(v):
 def render_df(lst, badge_col=None, badge_fn=None):
     if not lst: st.info("Chưa có dữ liệu"); return
     df = pd.DataFrame(lst)
-    cols = [c for c in df.columns if c != "Người tạo"]
+    # ✅ Ẩn cột không cần thiết
+    hide_cols = ["Người tạo", "drive_files", "_project_code"]
+    cols = [c for c in df.columns if c not in hide_cols]
+    # ✅ Format cột Files thành tên file đẹp
+    if "Files" in cols:
+        df["Files"] = df["Files"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x else "")
     fn = badge_fn or c_tt
     s = df[cols].style.set_properties(**{"font-size":"13px","padding":"8px 12px"}) \
         .set_table_styles([

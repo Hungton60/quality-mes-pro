@@ -279,7 +279,7 @@ def list_drive_files(folder_id=None, query_filter=None):
 
 def get_drive_file_download_url(file_id):
     """Lấy link download file từ Google Drive"""
-    return f"https://drive.google.com/uc?id={file_id}&export=download"
+    return f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
 
 # ══════════════════════════════════════════════════════════
 # SESSION PERSISTENCE — Giữ đăng nhập khi reload
