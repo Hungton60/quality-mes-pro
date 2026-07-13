@@ -101,16 +101,23 @@ def _get_drive_client_pro():
 def _get_spreadsheet_pro():
     """Lấy spreadsheet từ cache"""
     gc = _get_gspread_client_pro()
-    if gc is None: return None
+    if gc is None:
+        print("[GSheets] _get_spreadsheet_pro: client is None")
+        return None
     try:
         if hasattr(st, "secrets") and "spreadsheet_id_pro" in st.secrets:
             sid = st.secrets["spreadsheet_id_pro"]
         elif os.environ.get("SPREADSHEET_ID_PRO"):
             sid = os.environ["SPREADSHEET_ID_PRO"]
         else:
+            print("[GSheets] No spreadsheet_id found")
             return None
-        return gc.open_by_key(sid)
-    except Exception:
+        print(f"[GSheets] Opening: {sid}")
+        ss = gc.open_by_key(sid)
+        print(f"[GSheets] ✅ Opened: {ss.title}")
+        return ss
+    except Exception as e:
+        print(f"[GSheets] ❌ open_by_key ERROR: {type(e).__name__}: {e}")
         return None
 
 def _ensure_sheet_pro(ss, name):
@@ -336,6 +343,10 @@ def clear_draft(form_key):
 # ══════════════════════════════════════════════════════════
 def load_all() -> dict:
     """Đọc toàn bộ — thử Google Sheets trước, fallback JSON local."""
+    # ✅ FIX: Clear cache_resource để force reconnect
+    _get_gspread_client_pro.clear()
+    _get_drive_client_pro.clear()
+    
     result = {}
     for k in KEYS:
         gs_data = _gs_load(k)
@@ -343,10 +354,12 @@ def load_all() -> dict:
             _path(k).write_text(json.dumps(gs_data, ensure_ascii=False, indent=2), encoding="utf-8")
             result[k] = gs_data
             continue
+        # Fallback: đọc JSON local
         p = _path(k)
         if p.exists():
             try:
                 result[k] = json.loads(p.read_text(encoding="utf-8"))
+                print(f"[Local] Loaded {k} from JSON")
                 continue
             except Exception:
                 pass
