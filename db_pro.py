@@ -272,31 +272,45 @@ def list_drive_files(folder_id=None, query_filter=None):
         return []
 
 def get_drive_file_download_url(file_id):
-    """Lấy link download file từ Google Drive"""
-    return f"https://drive.google.com/uc?id={file_id}&export=download"
+    """✅ FIX LỖI 4: Link xem file trực tiếp trên web, không cần IT"""
+    return f"https://drive.google.com/file/d/{file_id}/view"
 
 # ══════════════════════════════════════════════════════════
 # SESSION PERSISTENCE — Giữ đăng nhập khi reload
 # ══════════════════════════════════════════════════════════
 def save_session_token(user_account):
-    """Lưu session token vào file local (bảo mật cơ bản)"""
-    token = {
-        "account": user_account,
-        "timestamp": datetime.now().isoformat(),
-        "expires": (datetime.now().timestamp() + 86400 * 7)  # 7 ngày
-    }
-    token_path = DATA_DIR / "session_token.json"
-    token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
+    """Lưu session token vào Streamlit session_state (tồn tại trong tab hiện tại)"""
+    try:
+        import streamlit as st
+        st.session_state["_session_account"] = user_account
+        st.session_state["_session_expires"] = datetime.now().timestamp() + 86400 * 7
+        # Cũng lưu local để backup
+        token = {
+            "account": user_account,
+            "timestamp": datetime.now().isoformat(),
+            "expires": (datetime.now().timestamp() + 86400 * 7)
+        }
+        token_path = DATA_DIR / "session_token.json"
+        token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 def load_session_token():
-    """Load session token và kiểm tra hạn"""
+    """Load session token — kiểm tra session_state trước, sau đó file local"""
     try:
+        import streamlit as st
+        # Kiểm tra session_state trước (nhanh nhất)
+        if "_session_account" in st.session_state:
+            expires = st.session_state.get("_session_expires", 0)
+            if datetime.now().timestamp() < expires:
+                return st.session_state["_session_account"]
+        # Fallback: đọc file local
         token_path = DATA_DIR / "session_token.json"
         if not token_path.exists():
             return None
         token = json.loads(token_path.read_text(encoding="utf-8"))
         if datetime.now().timestamp() > token.get("expires", 0):
-            token_path.unlink()  # Xóa token hết hạn
+            token_path.unlink()
             return None
         return token.get("account")
     except Exception:
@@ -305,6 +319,9 @@ def load_session_token():
 def clear_session_token():
     """Xóa session token khi đăng xuất"""
     try:
+        import streamlit as st
+        st.session_state.pop("_session_account", None)
+        st.session_state.pop("_session_expires", None)
         token_path = DATA_DIR / "session_token.json"
         if token_path.exists():
             token_path.unlink()
@@ -343,27 +360,42 @@ def clear_draft(form_key):
 # ══════════════════════════════════════════════════════════
 def load_all() -> dict:
     """Đọc toàn bộ — thử Google Sheets trước, fallback JSON local."""
-    # ✅ FIX: Clear cache_resource để force reconnect
-    _get_gspread_client_pro.clear()
-    _get_drive_client_pro.clear()
-    
+    # ✅ FIX: Clear cache để force kết nối mới
+    try:
+        _get_gspread_client_pro.clear()
+        _get_drive_client_pro.clear()
+    except Exception:
+        pass
+
     result = {}
+    gs_ok = False  # Track xem GSheets có hoạt động không
+
     for k in KEYS:
         gs_data = _gs_load(k)
         if gs_data is not None:
-            _path(k).write_text(json.dumps(gs_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            # Lưu backup local
+            try:
+                _path(k).write_text(json.dumps(gs_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
             result[k] = gs_data
+            gs_ok = True
             continue
-        # Fallback: đọc JSON local
+
+        # Fallback: đọc JSON local (backup từ lần trước)
         p = _path(k)
         if p.exists():
             try:
-                result[k] = json.loads(p.read_text(encoding="utf-8"))
-                print(f"[Local] Loaded {k} from JSON")
+                local_data = json.loads(p.read_text(encoding="utf-8"))
+                result[k] = local_data
+                print(f"[Local] ✅ Loaded {k} from local backup")
                 continue
             except Exception:
                 pass
+
         result[k] = DEFAULTS.get(k)
+
+    print(f"[load_all] GSheets: {'✅ OK' if gs_ok else '❌ Failed, using local/default'}")
     return result
 
 def save_key(key: str, data) -> None:

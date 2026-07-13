@@ -10,8 +10,8 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
                     drive_status_pro)
 import time
 
-# ✅ CACHE load_all để tránh reload từ Google Sheets mỗi lần
-@st.cache_data(ttl=300, show_spinner=False)
+# ✅ FIX LỖI 1: Không load Google Sheets khi chưa đăng nhập
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_load_all():
     return load_all()
 
@@ -85,12 +85,20 @@ hr{border-color:#f1f5f9!important;margin:8px 0!important}
 # ══════════════════════════════════════════════════════════
 # SESSION STATE
 # ══════════════════════════════════════════════════════════
+def _load_data_from_sheets():
+    """✅ FIX LỖI 1+2: Load data sau khi đăng nhập, không load trước"""
+    if not st.session_state.get("_data_loaded", False):
+        data = cached_load_all()
+        for k in ["users_list","project_list","iqc_data","ipqc_data",
+                  "oqc_data","ncr_data","capa_data","dev_data","log_list"]:
+            if k in data and data[k]:
+                st.session_state[k] = data[k]
+        st.session_state["_data_loaded"] = True
+
 def _init(k, v):
     if k not in st.session_state:
-        if k in ("current_user","active_project","login_error","spc_df"):
-            st.session_state[k] = v
-        else:
-            st.session_state[k] = cached_load_all().get(k, v)
+        # Không gọi GSheets ở đây — tránh màn hình trắng khi chưa đăng nhập
+        st.session_state[k] = v
 
 _init("current_user",   None)
 _init("login_error",    "")
@@ -319,6 +327,12 @@ if st.session_state.current_user is None:
 # ══════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════
+# ✅ FIX LỖI 1+2: Load data từ GSheets sau khi đã đăng nhập
+_load_data_from_sheets()
+
+# ✅ FIX LỖI 3: Auto-save mỗi lần render (nếu có thay đổi)
+auto_save()
+
 role_colors = {"Quản lý":"#f59e0b","Trưởng QC":"#10b981","Kiểm tra viên":"#818cf8"}
 rc = role_colors.get(cu().get("Vai trò",""),"#94a3b8")
 rb = {"Quản lý":"#451a03","Trưởng QC":"#064e3b","Kiểm tra viên":"#1e1b4b"}.get(cu().get("Vai trò",""),"#1e1b4b")
@@ -346,6 +360,7 @@ st.sidebar.markdown(f"<div style='font-size:11px;padding:4px 0;color:{'#4ade80' 
 
 if st.sidebar.button("🔄 Reload data", use_container_width=True):
     st.cache_data.clear()
+    st.session_state["_data_loaded"] = False  # ✅ Force reload từ GSheets
     for k in ["users_list","project_list","iqc_data","ipqc_data","oqc_data","ncr_data","capa_data","dev_data","log_list"]:
         if k in st.session_state:
             del st.session_state[k]
