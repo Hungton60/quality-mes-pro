@@ -11,7 +11,7 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
 import time
 
 # ✅ CACHE load_all để tránh reload từ Google Sheets mỗi lần
-@st.cache_data(ttl=0, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def cached_load_all():
     return load_all()
 
@@ -343,6 +343,14 @@ st.sidebar.markdown(f"""
 _gs = gs_status_pro()
 dot = "🟢" if _gs["connected"] else "🔴"
 st.sidebar.markdown(f"<div style='font-size:11px;padding:4px 0;color:{'#4ade80' if _gs['connected'] else '#f87171'}'>{dot} {_gs['message']}</div>", unsafe_allow_html=True)
+
+if st.sidebar.button("🔄 Reload data", use_container_width=True):
+    st.cache_data.clear()
+    for k in ["users_list","project_list","iqc_data","ipqc_data","oqc_data","ncr_data","capa_data","dev_data","log_list"]:
+        if k in st.session_state:
+            del st.session_state[k]
+    st.rerun()
+
 st.sidebar.markdown("---")
 
 # Chọn dự án
