@@ -624,7 +624,6 @@ def form_iqc():
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
-        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
@@ -751,7 +750,7 @@ def form_ipqc():
                         "Người kiểm":nk,"Files":[],"drive_files":[],
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
                     set_da_list("ipqc_data",lst)
-                    st.session_state["last_created_ipqc"]={"sp":sp,"idx":len(lst)-1}
+                    st.session_state["last_created_ipqc"]={"sp":sp,"idx":len(lst)-1}; time.sleep(2)
                     ghi_log("IPQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên công đoạn")
     def edit_ipqc(idx,row,lst_ref,dk):
@@ -820,7 +819,7 @@ def form_oqc():
                         "Người kiểm":nk,"Files":[],"drive_files":[],
                         "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
                     set_da_list("oqc_data",lst)
-                    st.session_state["last_created_oqc"]={"sp":sp,"idx":len(lst)-1}
+                    st.session_state["last_created_oqc"]={"sp":sp,"idx":len(lst)-1}; time.sleep(2)
                     ghi_log("OQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Mã/Tên sản phẩm")
     def edit_oqc(idx,row,lst_ref,dk):
@@ -902,7 +901,7 @@ elif page == "⚠️ NCR + CAPA":
                             "Người phát hiện":ph,"Người lập":nl,"Mức độ":md,"Trạng thái":tt,
                             "Files":[],"drive_files":[],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
                         set_da_list("ncr_data",lst)
-                        st.session_state["last_created_ncr"]={"sp":so,"idx":len(lst)-1}
+                        st.session_state["last_created_ncr"]={"sp":so,"idx":len(lst)-1}; time.sleep(2)
                         ghi_log("NCR","Tạo mới",f"Tạo {so}"); st.rerun()
                     else: st.error("Điền Số NCR và Tên vật tư/SP")
         def edit_ncr(idx,row,lst_ref,dk):
@@ -974,7 +973,7 @@ elif page == "⚠️ NCR + CAPA":
                             "Thời hạn":th.strftime("%d-%m-%Y"),"Người lập":nl,"Trạng thái CAPA":tt,
                             "Files":[],"drive_files":[],"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
                         set_da_list("capa_data",lst)
-                        st.session_state["last_created_capa"]={"sp":ma,"idx":len(lst)-1}
+                        st.session_state["last_created_capa"]={"sp":ma,"idx":len(lst)-1}; time.sleep(2)
                         ghi_log("CAPA","Tạo mới",f"Tạo {ma}"); st.rerun()
                     else: st.error("Điền Mã CAPA")
         def edit_capa(idx,row,lst_ref,dk):
