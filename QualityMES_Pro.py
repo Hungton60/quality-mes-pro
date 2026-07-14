@@ -967,7 +967,7 @@ elif page == "⚠️ NCR + CAPA":
                 nn=st.text_area("Nguyên nhân gốc rễ",height=100)
                 kp=st.text_area("Hành động khắc phục",height=100)
                 pn=st.text_area("Hành động phòng ngừa",height=100)
-                gc=st.text_area("Ghi chú",height=50)
+                gc=st.text_area("Ghi chú",height=100)
                 if st.form_submit_button("✅ Tạo CAPA",use_container_width=True):
                     if ma:
                         lst.append({"Mã CAPA":ma,"Số NCR":ncr or "-","Nguyên nhân":nn or "-",
@@ -991,7 +991,7 @@ elif page == "⚠️ NCR + CAPA":
                 nl=c2.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_capa_{idx}")
                 nn=st.text_area("Nguyên nhân",value=row.get("Nguyên nhân",""),height=100)
                 kp=st.text_area("Khắc phục",value=row.get("Khắc phục",""),height=100)
-                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=50)
+                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
                 if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Mã CAPA":ma,"Số NCR":ncr,"Bộ phận":bp,"Thời hạn":th,
                         "Trạng thái CAPA":tt,"Nguyên nhân":nn,"Khắc phục":kp,"Người lập":nl,"Ghi chú":gc})
