@@ -729,10 +729,9 @@ def form_ipqc():
                     lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
                     set_da_list("ipqc_data",lst); st.session_state["last_created_ipqc"]=None
                     st.session_state["last_drive_upload"]=drive_files; st.rerun()
-            c3u,c4u=st.columns(2)
-            if c3u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ipqc"):
+            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ipqc"):
                 st.session_state["last_created_ipqc"]=None; st.rerun()
-            if c4u.button("Đóng thông báo",use_container_width=True,key="close_ipqc_msg"):
+            if st.button("Đóng thông báo", key="close_ipqc_msg"):
                 st.session_state["last_created_ipqc"]=None; st.rerun()
             st.divider()
         with st.form("frm_ipqc_new",clear_on_submit=True):
@@ -798,10 +797,9 @@ def form_oqc():
                     lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
                     set_da_list("oqc_data",lst); st.session_state["last_created_oqc"]=None
                     st.session_state["last_drive_upload"]=drive_files; st.rerun()
-            c3u,c4u=st.columns(2)
-            if c3u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_oqc"):
+            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_oqc"):
                 st.session_state["last_created_oqc"]=None; st.rerun()
-            if c4u.button("Đóng thông báo",use_container_width=True,key="close_oqc_msg"):
+            if st.button("Đóng thông báo", key="close_oqc_msg"):
                 st.session_state["last_created_oqc"]=None; st.rerun()
             st.divider()
         with st.form("frm_oqc_new",clear_on_submit=True):
@@ -878,10 +876,9 @@ elif page == "⚠️ NCR + CAPA":
                         lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
                         set_da_list("ncr_data",lst); st.session_state["last_created_ncr"]=None
                         st.session_state["last_drive_upload"]=drive_files; st.rerun()
-                c3u,c4u=st.columns(2)
-                if c3u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ncr"):
+                if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_ncr"):
                     st.session_state["last_created_ncr"]=None; st.rerun()
-                if c4u.button("Đóng thông báo",use_container_width=True,key="close_ncr_msg"):
+                if st.button("Đóng thông báo", key="close_ncr_msg"):
                     st.session_state["last_created_ncr"]=None; st.rerun()
                 st.divider()
             with st.form("frm_ncr_new",clear_on_submit=True):
@@ -950,10 +947,9 @@ elif page == "⚠️ NCR + CAPA":
                         lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
                         set_da_list("capa_data",lst); st.session_state["last_created_capa"]=None
                         st.session_state["last_drive_upload"]=drive_files; st.rerun()
-                c3u,c4u=st.columns(2)
-                if c3u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_capa"):
+                if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_capa"):
                     st.session_state["last_created_capa"]=None; st.rerun()
-                if c4u.button("Đóng thông báo",use_container_width=True,key="close_capa_msg"):
+                if st.button("Đóng thông báo", key="close_capa_msg"):
                     st.session_state["last_created_capa"]=None; st.rerun()
                 st.divider()
             with st.form("frm_capa_new",clear_on_submit=True):
