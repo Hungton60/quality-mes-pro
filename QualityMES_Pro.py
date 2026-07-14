@@ -660,49 +660,91 @@ def form_iqc():
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
 
-    def edit_iqc(idx,row,lst_ref,dk):
-        # ✅ FIX: Upload NGOÀI form để tránh conflict
+    def edit_iqc(idx, row, lst_ref, dk):
+        """Sửa phiếu IQC - bao gồm cả quản lý file"""
+        
+        # Lấy file cũ
         cur_drive_files = list(row.get("drive_files", []))
+        
+        # PHẦN 1: Hiển thị file cũ + nút Xóa
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
-            for f in cur_drive_files:
-                st.markdown(f"📥 [{f['name']}]({f['url']})")
+            for i, f in enumerate(cur_drive_files):
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.markdown(f"📥 [{f['name']}]({f['url']})")
+                with col2:
+                    if st.button("🗑️", key=f"del_file_iqc_{idx}_{i}", help="Xóa file"):
+                        cur_drive_files.pop(i)
+                        file_names = [x["name"] for x in cur_drive_files]
+                        lst_ref[idx].update({"Files": file_names, "drive_files": cur_drive_files})
+                        set_da_list("iqc_data", lst_ref)
+                        ghi_log("IQC", "Xóa file", f"Xóa {f['name']} khỏi {row.get('Số phiếu','')}")
+                        st.rerun()
         
-        new_up = st.file_uploader("➕ Upload file lên Google Drive",
-            accept_multiple_files=True,
-            type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
-            key=f"up_iqc_{idx}")
-        
-        if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_iqc_{idx}"):
-            new_drive_files = list(cur_drive_files)
-            for file in new_up:
-                success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
-                if success and file_id:
-                    drive_url = get_drive_file_download_url(file_id)
-                    new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
-                    st.success(f"✅ Đã upload {file.name}")
-                else:
-                    st.error(msg)
-            file_names = [f["name"] for f in new_drive_files]
-            lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
-            set_da_list("iqc_data", lst_ref)
-            ghi_log("IQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}") 
-            st.rerun()
-
+        # PHẦN 2: Form sửa
         with st.form(f"frm_eiqc_{idx}"):
-            c1,c2=st.columns(2)
-            sp=c1.text_input("Số phiếu",value=row.get("Số phiếu","")); vt=c2.text_input("Tên vật tư",value=row.get("Tên vật tư",""))
-            nc=c1.text_input("Nhà cung cấp",value=row.get("Nhà cung cấp","")); lo=c2.text_input("Lô",value=row.get("Lô",""))
-            sl=c1.text_input("SL mẫu",value=row.get("SL mẫu",""))
-            tt_o=["Đạt (Pass)","Không đạt (Failed)"]; cur_tt=row.get("Trạng thái","Đạt (Pass)")
-            tt=c2.selectbox("Trạng thái",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_iqc_{idx}")
-            un=unames(); cur_nk=row.get("Người kiểm","")
-            nk=c1.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_iqc_{idx}")
-            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
-            if st.form_submit_button("💾 Lưu",use_container_width=True):
-                lst_ref[idx].update({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc,"Lô":lo,
-                    "SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
-                set_da_list("iqc_data",lst_ref); ghi_log("IQC","Cập nhật",f"Sửa {sp}"); st.rerun()
+            c1, c2 = st.columns(2)
+            sp = c1.text_input("Số phiếu", value=row.get("Số phiếu", ""))
+            vt = c2.text_input("Tên vật tư", value=row.get("Tên vật tư", ""))
+            nc = c1.text_input("Nhà cung cấp", value=row.get("Nhà cung cấp", ""))
+            lo = c2.text_input("Lô", value=row.get("Lô", ""))
+            sl = c1.text_input("SL mẫu", value=row.get("SL mẫu", ""))
+            tt_o = ["Đạt (Pass)", "Không đạt (Failed)"]
+            cur_tt = row.get("Trạng thái", "Đạt (Pass)")
+            tt = c2.selectbox("Trạng thái", tt_o, 
+                             index=tt_o.index(cur_tt) if cur_tt in tt_o else 0, 
+                             key=f"tt_iqc_{idx}")
+            un = unames()
+            cur_nk = row.get("Người kiểm", "")
+            nk = c1.selectbox("Người kiểm", un, 
+                             index=un.index(cur_nk) if cur_nk in un else 0, 
+                             key=f"nk_iqc_{idx}")
+            gc = st.text_area("Ghi chú", value=row.get("Ghi chú", ""), height=100)
+            
+            # PHẦN 3: Upload file MỚI bên trong form
+            st.markdown("**➕ Thêm file mới (tuỳ chọn):**")
+            new_files = st.file_uploader("Chọn file để thêm",
+                accept_multiple_files=True,
+                type=["pdf", "docx", "xlsx", "xls", "jpg", "jpeg", "png"],
+                key=f"up_iqc_edit_{idx}")
+            
+            # Submit button
+            if st.form_submit_button("💾 Lưu", use_container_width=True):
+                # Cập nhật file nếu có file mới
+                new_drive_files = list(cur_drive_files)
+                
+                if new_files:
+                    for file in new_files:
+                        success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                        if success and file_id:
+                            drive_url = get_drive_file_download_url(file_id)
+                            new_drive_files.append({
+                                "name": file.name, 
+                                "id": file_id, 
+                                "url": drive_url
+                            })
+                            st.success(f"✅ Đã upload {file.name}")
+                        else:
+                            st.error(f"❌ Lỗi upload {file.name}: {msg}")
+                
+                # Cập nhật toàn bộ
+                file_names = [f["name"] for f in new_drive_files]
+                lst_ref[idx].update({
+                    "Số phiếu": sp,
+                    "Tên vật tư": vt,
+                    "Nhà cung cấp": nc,
+                    "Lô": lo,
+                    "SL mẫu": sl,
+                    "Người kiểm": nk,
+                    "Trạng thái": tt,
+                    "Ghi chú": gc,
+                    "Files": file_names,
+                    "drive_files": new_drive_files
+                })
+                set_da_list("iqc_data", lst_ref)
+                ghi_log("IQC", "Cập nhật", f"Sửa {sp}" + (f" (+ {len(new_files)} file)" if new_files else ""))
+                st.rerun()
 
     st.write("")
     table_actions(lst,"Số phiếu","IQC","iqc_data",edit_iqc)
