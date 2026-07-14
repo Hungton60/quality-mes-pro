@@ -662,6 +662,22 @@ def form_iqc():
             for f in cur_drive_files:
                 st.markdown(f"📥 [{f['name']}]({f['url']})")
         
+        # ✅ THÊM: Nút Xóa file
+        if cur_drive_files:
+            st.markdown("**🗑️ Xóa file:**")
+            for i, f in enumerate(cur_drive_files):
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.caption(f['name'])
+                with col2:
+                    if st.button("❌", key=f"del_file_iqc_{idx}_{i}", help="Xóa file này"):
+                        cur_drive_files.pop(i)
+                        file_names = [x["name"] for x in cur_drive_files]
+                        lst_ref[idx].update({"Files": file_names, "drive_files": cur_drive_files})
+                        set_da_list("iqc_data", lst_ref)
+                        ghi_log("IQC", "Xóa file", f"Xóa {f['name']} khỏi {row.get('Số phiếu','')}")
+                        st.rerun()
+        
         new_up = st.file_uploader("➕ Upload file lên Google Drive",
             accept_multiple_files=True,
             type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
