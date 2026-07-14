@@ -193,7 +193,12 @@ def c_tinhtrang(v):
 def render_df(lst, badge_col=None, badge_fn=None):
     if not lst: st.info("Chưa có dữ liệu"); return
     df = pd.DataFrame(lst)
-    cols = [c for c in df.columns if c != "Người tạo"]
+    # ✅ Ẩn cột không cần thiết
+    hide_cols = ["Người tạo", "drive_files", "_project_code"]
+    cols = [c for c in df.columns if c not in hide_cols]
+    # ✅ Format cột Files thành tên file đẹp
+    if "Files" in cols:
+        df["Files"] = df["Files"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x else "")
     fn = badge_fn or c_tt
     s = df[cols].style.set_properties(**{"font-size":"13px","padding":"8px 12px"}) \
         .set_table_styles([
@@ -954,7 +959,7 @@ elif page == "⚠️ NCR + CAPA":
                 nn=st.text_area("Nguyên nhân gốc rễ",height=100)
                 kp=st.text_area("Hành động khắc phục",height=100)
                 pn=st.text_area("Hành động phòng ngừa",height=100)
-                gc=st.text_area("Ghi chú",height=68)
+                gc=st.text_area("Ghi chú",height=50)
                 if st.form_submit_button("✅ Tạo CAPA",use_container_width=True):
                     if ma:
                         lst.append({"Mã CAPA":ma,"Số NCR":ncr or "-","Nguyên nhân":nn or "-",
@@ -978,7 +983,7 @@ elif page == "⚠️ NCR + CAPA":
                 nl=c2.selectbox("Người lập",un,index=un.index(cur_nl) if cur_nl in un else 0,key=f"nl_capa_{idx}")
                 nn=st.text_area("Nguyên nhân",value=row.get("Nguyên nhân",""),height=100)
                 kp=st.text_area("Khắc phục",value=row.get("Khắc phục",""),height=100)
-                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=68)
+                gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=50)
                 if st.form_submit_button("💾 Lưu",use_container_width=True):
                     lst_ref[idx].update({"Mã CAPA":ma,"Số NCR":ncr,"Bộ phận":bp,"Thời hạn":th,
                         "Trạng thái CAPA":tt,"Nguyên nhân":nn,"Khắc phục":kp,"Người lập":nl,"Ghi chú":gc})
