@@ -624,6 +624,7 @@ def form_iqc():
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
+        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
@@ -659,23 +660,17 @@ def form_iqc():
         cur_drive_files = list(row.get("drive_files", []))
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
-            for f in cur_drive_files:
-                st.markdown(f"📥 [{f['name']}]({f['url']})")
-        
-        # ✅ THÊM: Nút Xóa file
-        if cur_drive_files:
-            st.markdown("**🗑️ Xóa file:**")
             for i, f in enumerate(cur_drive_files):
                 col1, col2 = st.columns([5, 1])
                 with col1:
-                    st.caption(f['name'])
+                    st.markdown(f"📥 [{f['name']}]({f['url']})")
                 with col2:
-                    if st.button("❌", key=f"del_file_iqc_{idx}_{i}", help="Xóa file này"):
+                    if st.button("❌", key=f"del_file_{idx}_{i}", help="Xóa file"):
                         cur_drive_files.pop(i)
                         file_names = [x["name"] for x in cur_drive_files]
                         lst_ref[idx].update({"Files": file_names, "drive_files": cur_drive_files})
                         set_da_list("iqc_data", lst_ref)
-                        ghi_log("IQC", "Xóa file", f"Xóa {f['name']} khỏi {row.get('Số phiếu','')}")
+                        ghi_log("IQC", "Xóa file", f"Xóa {f['name']}")
                         st.rerun()
         
         new_up = st.file_uploader("➕ Upload file lên Google Drive",
