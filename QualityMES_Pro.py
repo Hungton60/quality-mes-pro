@@ -651,8 +651,36 @@ def form_iqc():
                     set_da_list("iqc_data",lst)
                     clear_draft("iqc_form")
                     st.session_state[draft_key] = None
+                    st.session_state["last_created_iqc"] = {"sp": sp, "idx": len(lst)-1}
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
+    
+    # ✅ AUTO UPLOAD AFTER CREATE
+    _show_iqc = bool(st.session_state.get("last_created_iqc"))
+    if _show_iqc:
+        last_iqc = st.session_state.get("last_created_iqc")
+        if last_iqc:
+            st.success(f"✅ Đã tạo phiếu **{last_iqc['sp']}**")
+            st.markdown("#### 📎 Upload file đính kèm ngay:")
+            up_now_iqc = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="iqc_upload_after")
+            c1u,c2u=st.columns(2)
+            if up_now_iqc and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_iqc"):
+                drive_files=[]
+                for file in up_now_iqc:
+                    success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
+                    if success and file_id:
+                        drive_url=get_drive_file_download_url(file_id)
+                        drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
+                        st.success(f"✅ {file.name}")
+                    else: st.error(msg)
+                if drive_files:
+                    idx=last_iqc["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
+                    lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
+                    set_da_list("iqc_data",lst); st.session_state["last_created_iqc"]=None
+                    st.session_state["last_drive_upload"]=drive_files; st.rerun()
+            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_iqc"):
+                st.session_state["last_created_iqc"]=None; st.rerun()
+            st.divider()
 
     def edit_iqc(idx,row,lst_ref,dk):
         # ✅ FIX: Upload NGOÀI form để tránh conflict
