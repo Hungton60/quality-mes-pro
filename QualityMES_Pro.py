@@ -193,7 +193,12 @@ def c_tinhtrang(v):
 def render_df(lst, badge_col=None, badge_fn=None):
     if not lst: st.info("Chưa có dữ liệu"); return
     df = pd.DataFrame(lst)
-    cols = [c for c in df.columns if c != "Người tạo"]
+    # ✅ Ẩn cột không cần thiết
+    hide_cols = ["Người tạo", "drive_files", "_project_code"]
+    cols = [c for c in df.columns if c not in hide_cols]
+    # ✅ Format cột Files thành tên file đẹp
+    if "Files" in cols:
+        df["Files"] = df["Files"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x else "")
     fn = badge_fn or c_tt
     s = df[cols].style.set_properties(**{"font-size":"13px","padding":"8px 12px"}) \
         .set_table_styles([
@@ -624,6 +629,7 @@ def form_iqc():
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
+        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
@@ -651,54 +657,16 @@ def form_iqc():
                     set_da_list("iqc_data",lst)
                     clear_draft("iqc_form")
                     st.session_state[draft_key] = None
-                    st.session_state["last_created_iqc"] = {"sp": sp, "idx": len(lst)-1}
                     ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên vật tư")
-    
-    # ✅ AUTO UPLOAD AFTER CREATE
-    _show_iqc = bool(st.session_state.get("last_created_iqc"))
-    if _show_iqc:
-        last_iqc = st.session_state.get("last_created_iqc")
-        if last_iqc:
-            st.success(f"✅ Đã tạo phiếu **{last_iqc['sp']}**")
-            st.markdown("#### 📎 Upload file đính kèm ngay:")
-            up_now_iqc = st.file_uploader("Chọn file",accept_multiple_files=True,type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],key="iqc_upload_after")
-            c1u,c2u=st.columns(2)
-            if up_now_iqc and c1u.button("☁️ Upload lên Drive",use_container_width=True,key="btn_up_iqc"):
-                drive_files=[]
-                for file in up_now_iqc:
-                    success,msg,file_id=upload_file_to_drive(file.name,file.getvalue())
-                    if success and file_id:
-                        drive_url=get_drive_file_download_url(file_id)
-                        drive_files.append({"name":file.name,"id":file_id,"url":drive_url})
-                        st.success(f"✅ {file.name}")
-                    else: st.error(msg)
-                if drive_files:
-                    idx=last_iqc["idx"]; lst[idx]["drive_files"]=list(lst[idx].get("drive_files",[]))+drive_files
-                    lst[idx]["Files"]=[f["name"] for f in lst[idx]["drive_files"]]
-                    set_da_list("iqc_data",lst); st.session_state["last_created_iqc"]=None
-                    st.session_state["last_drive_upload"]=drive_files; st.rerun()
-            if c2u.button("⏭️ Bỏ qua",use_container_width=True,key="btn_skip_iqc"):
-                st.session_state["last_created_iqc"]=None; st.rerun()
-            st.divider()
 
     def edit_iqc(idx,row,lst_ref,dk):
         # ✅ FIX: Upload NGOÀI form để tránh conflict
         cur_drive_files = list(row.get("drive_files", []))
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
-            for i, f in enumerate(cur_drive_files):
-                col1, col2 = st.columns([5, 1])
-                with col1:
-                    st.markdown(f"📥 [{f['name']}]({f['url']})")
-                with col2:
-                    if st.button("❌", key=f"del_file_{idx}_{i}", help="Xóa file"):
-                        cur_drive_files.pop(i)
-                        file_names = [x["name"] for x in cur_drive_files]
-                        lst_ref[idx].update({"Files": file_names, "drive_files": cur_drive_files})
-                        set_da_list("iqc_data", lst_ref)
-                        ghi_log("IQC", "Xóa file", f"Xóa {f['name']}")
-                        st.rerun()
+            for f in cur_drive_files:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
         
         new_up = st.file_uploader("➕ Upload file lên Google Drive",
             accept_multiple_files=True,
