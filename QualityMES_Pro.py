@@ -624,7 +624,6 @@ def form_iqc():
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
-        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
