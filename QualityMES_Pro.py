@@ -136,7 +136,7 @@ _init("ipqc_data",  {})
 _init("oqc_data",   {})
 _init("ncr_data",   {})
 _init("capa_data",  {})
-_init("dev_data",   [])   # TB đo — global (không theo dự án)
+_init("dev_data",   {})   # TB đo — global (không theo dự án)
 _init("log_list",   [])
 
 # ══════════════════════════════════════════════════════════
@@ -150,9 +150,10 @@ def ghi_log(phane, action, detail, da=None):
     st.session_state.log_list.insert(0, entry)
     save_key("log_list", st.session_state.log_list)
 
+# ✅ FIX: thêm dòng set unsaved_changes = True để auto-save hoạt động
 def persist(key):
     save_key(key, st.session_state[key])
-    st.session_state.unsaved_changes = True   # ✅ FIX LỖI AUTO-SAVE
+    st.session_state.unsaved_changes = True
 
 def cu():
     return st.session_state.current_user or {}
@@ -598,6 +599,15 @@ def form_iqc():
     require_project(); da_banner()
     st.markdown("## ✅ Kiểm tra đầu vào (IQC)")
     
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
+    if st.session_state.get("last_drive_upload"):
+        st.success("✅ Files đã upload lên Google Drive:")
+        for f in st.session_state["last_drive_upload"]:
+            st.markdown(f"📥 [{f['name']}]({f['url']})")
+        if st.button("Đóng thông báo", key="close_drive_msg_iqc"):
+            st.session_state["last_drive_upload"] = None
+            st.rerun()
+    
     # ✅ DRAFT SYSTEM
     draft_key = f"iqc_draft_{st.session_state.active_project}"
     if draft_key not in st.session_state:
@@ -616,21 +626,12 @@ def form_iqc():
                 clear_draft("iqc_form")
                 st.rerun()
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
-    if st.session_state.get("last_drive_upload"):
-        st.success("✅ Files đã upload lên Google Drive:")
-        for f in st.session_state["last_drive_upload"]:
-            st.markdown(f"📥 [{f['name']}]({f['url']})")
-        if st.button("Đóng thông báo", key="close_drive_msg"):
-            st.session_state["last_drive_upload"] = None
-            st.rerun()
-    
     h1,h2=st.columns([7,1.5])
     lst=get_da_list("iqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
     with st.expander("➕ Tạo phiếu IQC mới"):
-        st.info("💡 Tạo phiếu xong, vào xem phiếu → click ✏️ Edit để upload file đính kèm")
+        # ✅ ĐÃ XÓA DÒNG "Tạo phiếu xong..." (chỉ giữ lại form)
         with st.form("frm_iqc_new",clear_on_submit=True):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
@@ -662,7 +663,7 @@ def form_iqc():
                 else: st.error("Điền Số phiếu và Tên vật tư")
 
     def edit_iqc(idx,row,lst_ref,dk):
-        # ✅ FIX: Upload NGOÀI form để tránh conflict
+        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (trong popover sửa)
         cur_drive_files = list(row.get("drive_files", []))
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
@@ -687,7 +688,9 @@ def form_iqc():
             file_names = [f["name"] for f in new_drive_files]
             lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
             set_da_list("iqc_data", lst_ref)
-            ghi_log("IQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}") 
+            ghi_log("IQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}")
+            # ✅ Lưu thông báo để hiển thị ở đầu trang
+            st.session_state["last_drive_upload"] = new_drive_files
             st.rerun()
 
         with st.form(f"frm_eiqc_{idx}"):
@@ -712,7 +715,7 @@ def form_ipqc():
     require_project(); da_banner()
     st.markdown("## 🧪 Kiểm tra quá trình (IPQC)")
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (giống IQC)
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -770,6 +773,35 @@ def form_ipqc():
                     ghi_log("IPQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên công đoạn")
     def edit_ipqc(idx,row,lst_ref,dk):
+        # ✅ HIỆN FILES ĐÃ UPLOAD TRONG POPOVER SỬA
+        cur_drive_files = list(row.get("drive_files", []))
+        if cur_drive_files:
+            st.markdown("**📎 Files đã upload:**")
+            for f in cur_drive_files:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
+        
+        new_up = st.file_uploader("➕ Upload file lên Google Drive",
+            accept_multiple_files=True,
+            type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+            key=f"up_ipqc_{idx}")
+        
+        if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_ipqc_{idx}"):
+            new_drive_files = list(cur_drive_files)
+            for file in new_up:
+                success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                if success and file_id:
+                    drive_url = get_drive_file_download_url(file_id)
+                    new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                    st.success(f"✅ Đã upload {file.name}")
+                else:
+                    st.error(msg)
+            file_names = [f["name"] for f in new_drive_files]
+            lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
+            set_da_list("ipqc_data", lst_ref)
+            ghi_log("IPQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}")
+            st.session_state["last_drive_upload"] = new_drive_files
+            st.rerun()
+        
         with st.form(f"frm_eipqc_{idx}"):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu",value=row.get("Số phiếu",""))
@@ -848,6 +880,34 @@ def form_oqc():
                     ghi_log("OQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Mã/Tên sản phẩm")
     def edit_oqc(idx,row,lst_ref,dk):
+        cur_drive_files = list(row.get("drive_files", []))
+        if cur_drive_files:
+            st.markdown("**📎 Files đã upload:**")
+            for f in cur_drive_files:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
+        
+        new_up = st.file_uploader("➕ Upload file lên Google Drive",
+            accept_multiple_files=True,
+            type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+            key=f"up_oqc_{idx}")
+        
+        if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_oqc_{idx}"):
+            new_drive_files = list(cur_drive_files)
+            for file in new_up:
+                success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                if success and file_id:
+                    drive_url = get_drive_file_download_url(file_id)
+                    new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                    st.success(f"✅ Đã upload {file.name}")
+                else:
+                    st.error(msg)
+            file_names = [f["name"] for f in new_drive_files]
+            lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
+            set_da_list("oqc_data", lst_ref)
+            ghi_log("OQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}")
+            st.session_state["last_drive_upload"] = new_drive_files
+            st.rerun()
+        
         with st.form(f"frm_eoqc_{idx}"):
             c1,c2=st.columns(2)
             sp=c1.text_input("Số phiếu",value=row.get("Số phiếu",""))
@@ -878,7 +938,7 @@ elif page == "⚠️ NCR + CAPA":
     tab_ncr, tab_capa = st.tabs(["📋 NCR","🔁 CAPA"])
 
     with tab_ncr:
-        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE cho NCR
+        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
         if st.session_state.get("last_drive_upload"):
             st.success("✅ Files đã upload lên Google Drive:")
             for f in st.session_state["last_drive_upload"]:
@@ -938,6 +998,34 @@ elif page == "⚠️ NCR + CAPA":
                         ghi_log("NCR","Tạo mới",f"Tạo {so}"); st.rerun()
                     else: st.error("Điền Số NCR và Tên vật tư/SP")
         def edit_ncr(idx,row,lst_ref,dk):
+            cur_drive_files = list(row.get("drive_files", []))
+            if cur_drive_files:
+                st.markdown("**📎 Files đã upload:**")
+                for f in cur_drive_files:
+                    st.markdown(f"📥 [{f['name']}]({f['url']})")
+            
+            new_up = st.file_uploader("➕ Upload file lên Google Drive",
+                accept_multiple_files=True,
+                type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+                key=f"up_ncr_{idx}")
+            
+            if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_ncr_{idx}"):
+                new_drive_files = list(cur_drive_files)
+                for file in new_up:
+                    success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                    if success and file_id:
+                        drive_url = get_drive_file_download_url(file_id)
+                        new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                        st.success(f"✅ Đã upload {file.name}")
+                    else:
+                        st.error(msg)
+                file_names = [f["name"] for f in new_drive_files]
+                lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
+                set_da_list("ncr_data", lst_ref)
+                ghi_log("NCR", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số NCR','')}")
+                st.session_state["last_drive_upload"] = new_drive_files
+                st.rerun()
+            
             with st.form(f"frm_encr_{idx}"):
                 c1,c2=st.columns(2)
                 so=c1.text_input("Số NCR",value=row.get("Số NCR",""))
@@ -958,7 +1046,7 @@ elif page == "⚠️ NCR + CAPA":
         st.write(""); table_actions(lst,"Số NCR","NCR","ncr_data",edit_ncr)
 
     with tab_capa:
-        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE cho CAPA
+        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
         if st.session_state.get("last_drive_upload"):
             st.success("✅ Files đã upload lên Google Drive:")
             for f in st.session_state["last_drive_upload"]:
@@ -1018,6 +1106,34 @@ elif page == "⚠️ NCR + CAPA":
                         ghi_log("CAPA","Tạo mới",f"Tạo {ma}"); st.rerun()
                     else: st.error("Điền Mã CAPA")
         def edit_capa(idx,row,lst_ref,dk):
+            cur_drive_files = list(row.get("drive_files", []))
+            if cur_drive_files:
+                st.markdown("**📎 Files đã upload:**")
+                for f in cur_drive_files:
+                    st.markdown(f"📥 [{f['name']}]({f['url']})")
+            
+            new_up = st.file_uploader("➕ Upload file lên Google Drive",
+                accept_multiple_files=True,
+                type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+                key=f"up_capa_{idx}")
+            
+            if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_capa_{idx}"):
+                new_drive_files = list(cur_drive_files)
+                for file in new_up:
+                    success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                    if success and file_id:
+                        drive_url = get_drive_file_download_url(file_id)
+                        new_drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                        st.success(f"✅ Đã upload {file.name}")
+                    else:
+                        st.error(msg)
+                file_names = [f["name"] for f in new_drive_files]
+                lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
+                set_da_list("capa_data", lst_ref)
+                ghi_log("CAPA", "Upload file", f"Upload {len(new_up)} file vào {row.get('Mã CAPA','')}")
+                st.session_state["last_drive_upload"] = new_drive_files
+                st.rerun()
+            
             with st.form(f"frm_ecapa_{idx}"):
                 c1,c2=st.columns(2)
                 ma=c1.text_input("Mã CAPA",value=row.get("Mã CAPA",""))
