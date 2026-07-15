@@ -136,7 +136,7 @@ _init("ipqc_data",  {})
 _init("oqc_data",   {})
 _init("ncr_data",   {})
 _init("capa_data",  {})
-_init("dev_data",   {})   # TB đo — global (không theo dự án)
+_init("dev_data",   [])   # TB đo — global (không theo dự án)
 _init("log_list",   [])
 
 # ══════════════════════════════════════════════════════════
@@ -152,6 +152,7 @@ def ghi_log(phane, action, detail, da=None):
 
 def persist(key):
     save_key(key, st.session_state[key])
+    st.session_state.unsaved_changes = True   # ✅ FIX LỖI AUTO-SAVE
 
 def cu():
     return st.session_state.current_user or {}
@@ -710,6 +711,16 @@ def form_iqc():
 def form_ipqc():
     require_project(); da_banner()
     st.markdown("## 🧪 Kiểm tra quá trình (IPQC)")
+    
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (giống IQC)
+    if st.session_state.get("last_drive_upload"):
+        st.success("✅ Files đã upload lên Google Drive:")
+        for f in st.session_state["last_drive_upload"]:
+            st.markdown(f"📥 [{f['name']}]({f['url']})")
+        if st.button("Đóng thông báo", key="close_drive_msg_ipqc"):
+            st.session_state["last_drive_upload"] = None
+            st.rerun()
+    
     lst=get_da_list("ipqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     st.download_button("📥 CSV",data=csv,file_name=f"IPQC_{AP}.csv",mime="text/csv",key="dl_ipqc",disabled=not lst)
@@ -778,6 +789,16 @@ def form_ipqc():
 def form_oqc():
     require_project(); da_banner()
     st.markdown("## 📦 Kiểm tra thành phẩm (OQC)")
+    
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
+    if st.session_state.get("last_drive_upload"):
+        st.success("✅ Files đã upload lên Google Drive:")
+        for f in st.session_state["last_drive_upload"]:
+            st.markdown(f"📥 [{f['name']}]({f['url']})")
+        if st.button("Đóng thông báo", key="close_drive_msg_oqc"):
+            st.session_state["last_drive_upload"] = None
+            st.rerun()
+    
     lst=get_da_list("oqc_data")
     csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
     st.download_button("📥 CSV",data=csv,file_name=f"OQC_{AP}.csv",mime="text/csv",key="dl_oqc",disabled=not lst)
@@ -857,6 +878,15 @@ elif page == "⚠️ NCR + CAPA":
     tab_ncr, tab_capa = st.tabs(["📋 NCR","🔁 CAPA"])
 
     with tab_ncr:
+        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE cho NCR
+        if st.session_state.get("last_drive_upload"):
+            st.success("✅ Files đã upload lên Google Drive:")
+            for f in st.session_state["last_drive_upload"]:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
+            if st.button("Đóng thông báo", key="close_drive_msg_ncr"):
+                st.session_state["last_drive_upload"] = None
+                st.rerun()
+        
         lst=get_da_list("ncr_data")
         csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
         st.download_button("📥 CSV",data=csv,file_name=f"NCR_{AP}.csv",mime="text/csv",key="dl_ncr",disabled=not lst)
@@ -928,6 +958,15 @@ elif page == "⚠️ NCR + CAPA":
         st.write(""); table_actions(lst,"Số NCR","NCR","ncr_data",edit_ncr)
 
     with tab_capa:
+        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE cho CAPA
+        if st.session_state.get("last_drive_upload"):
+            st.success("✅ Files đã upload lên Google Drive:")
+            for f in st.session_state["last_drive_upload"]:
+                st.markdown(f"📥 [{f['name']}]({f['url']})")
+            if st.button("Đóng thông báo", key="close_drive_msg_capa"):
+                st.session_state["last_drive_upload"] = None
+                st.rerun()
+        
         lst=get_da_list("capa_data")
         csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
         st.download_button("📥 CSV",data=csv,file_name=f"CAPA_{AP}.csv",mime="text/csv",key="dl_capa",disabled=not lst)

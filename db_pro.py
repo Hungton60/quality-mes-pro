@@ -68,7 +68,6 @@ def _get_gspread_client_pro():
         return None
 
 @st.cache_resource
-@st.cache_resource
 def _get_drive_client_pro():
     """Cache kết nối Google Drive"""
     try:
@@ -197,7 +196,6 @@ def _gs_save(key: str, data) -> bool:
                 for k in all_keys:
                     v = row.get(k, "")
                     if isinstance(v, list): v = json.dumps(v, ensure_ascii=False)
-                    # ✅ FIX: Giữ nguyên kiểu số nếu là số, không convert sang str
                     if isinstance(v, (int, float)) and v != "":
                         r.append(v)
                     else:
@@ -214,7 +212,6 @@ def _gs_save(key: str, data) -> bool:
                 for k in all_keys:
                     v = row.get(k, "")
                     if isinstance(v, list): v = json.dumps(v, ensure_ascii=False)
-                    # ✅ FIX: Giữ nguyên kiểu số nếu là số, không convert sang str
                     if isinstance(v, (int, float)) and v != "":
                         r.append(v)
                     else:
@@ -229,7 +226,8 @@ def _gs_save(key: str, data) -> bool:
 # ══════════════════════════════════════════════════════════
 # GOOGLE DRIVE — File Management
 # ══════════════════════════════════════════════════════════
-DEFAULT_DRIVE_FOLDER_ID = "0ANp3jJIUA1npUk9PVA"
+# SỬA LỖI: thay ID thư mục giả bằng None (tạm thời tắt upload nếu chưa có ID thật)
+DEFAULT_DRIVE_FOLDER_ID = None  # "0ANp3jJIUA1npUk9PVA" cũ bị sai, đặt None để tránh lỗi
 
 def upload_file_to_drive(file_name, file_content, folder_id=None):
     """Upload file lên Google Drive - return (success, message, file_id)"""
@@ -241,6 +239,11 @@ def upload_file_to_drive(file_name, file_content, folder_id=None):
             return False, msg, None
         
         target_folder = folder_id or DEFAULT_DRIVE_FOLDER_ID
+        if target_folder is None:
+            msg = "❌ Chưa cấu hình thư mục Google Drive (DEFAULT_DRIVE_FOLDER_ID = None)"
+            print(msg)
+            return False, msg, None
+
         file_metadata = {"name": file_name, "parents": [target_folder]}
         
         from googleapiclient.http import MediaInMemoryUpload
