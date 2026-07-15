@@ -593,7 +593,7 @@ elif page == "📁 Quản lý Dự án":
                         persist("project_list"); ghi_log("Dự án","Xóa",f"Xóa {proj['Mã DA']}",proj["Mã DA"]); st.rerun()
 
 # ══════════════════════════════════════════════════════════
-# HELPER: form tạo phiếu IQC/IPQC/OQC theo dự án
+# HÀM IQC — ĐÃ SỬA GIỐNG IPQC
 # ══════════════════════════════════════════════════════════
 def form_iqc():
     require_project(); da_banner()
@@ -608,7 +608,7 @@ def form_iqc():
             st.session_state["last_drive_upload"] = None
             st.rerun()
     
-    # Draft system (giữ nguyên)
+    # Draft system
     draft_key = f"iqc_draft_{st.session_state.active_project}"
     if draft_key not in st.session_state:
         saved_draft = load_draft("iqc_form")
@@ -770,11 +770,15 @@ def form_iqc():
                 st.rerun()
     
     st.write("")
-    table_actions(lst, "Số phiếu", "IQC", "iqc_data", edit_iqc)def form_ipqc():
+    table_actions(lst, "Số phiếu", "IQC", "iqc_data", edit_iqc)
+
+# ══════════════════════════════════════════════════════════
+# IPQC, OQC, NCR, CAPA, Thiết bị, SPC, Log, Users (giữ nguyên)
+# ══════════════════════════════════════════════════════════
+def form_ipqc():
     require_project(); da_banner()
     st.markdown("## 🧪 Kiểm tra quá trình (IPQC)")
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -832,7 +836,6 @@ def form_iqc():
                     ghi_log("IPQC","Tạo mới",f"Tạo {sp}"); st.rerun()
                 else: st.error("Điền Số phiếu và Tên công đoạn")
     def edit_ipqc(idx,row,lst_ref,dk):
-        # ✅ HIỆN FILES ĐÃ UPLOAD TRONG POPOVER SỬA
         cur_drive_files = list(row.get("drive_files", []))
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
@@ -881,7 +884,6 @@ def form_oqc():
     require_project(); da_banner()
     st.markdown("## 📦 Kiểm tra thành phẩm (OQC)")
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -997,7 +999,6 @@ elif page == "⚠️ NCR + CAPA":
     tab_ncr, tab_capa = st.tabs(["📋 NCR","🔁 CAPA"])
 
     with tab_ncr:
-        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
         if st.session_state.get("last_drive_upload"):
             st.success("✅ Files đã upload lên Google Drive:")
             for f in st.session_state["last_drive_upload"]:
@@ -1105,7 +1106,6 @@ elif page == "⚠️ NCR + CAPA":
         st.write(""); table_actions(lst,"Số NCR","NCR","ncr_data",edit_ncr)
 
     with tab_capa:
-        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
         if st.session_state.get("last_drive_upload"):
             st.success("✅ Files đã upload lên Google Drive:")
             for f in st.session_state["last_drive_upload"]:
@@ -1213,13 +1213,12 @@ elif page == "⚠️ NCR + CAPA":
         st.write(""); table_actions(lst,"Mã CAPA","CAPA","capa_data",edit_capa,badge_col="Trạng thái CAPA")
 
 # ══════════════════════════════════════════════════════════
-# THIẾT BỊ ĐO — Global (không theo dự án)
+# THIẾT BỊ ĐO
 # ══════════════════════════════════════════════════════════
 elif page == "🔧 Thiết bị đo":
     st.markdown("## 🔧 Thiết bị đo & Hiệu chuẩn")
     st.caption("Thiết bị đo dùng chung cho tất cả dự án")
     dev_lst = list(st.session_state.dev_data.values()) if isinstance(st.session_state.dev_data, dict) else st.session_state.dev_data
-    # Normalize: dev_data lưu dạng list
     if isinstance(st.session_state.dev_data, dict):
         st.session_state.dev_data = []
     dev_lst = st.session_state.dev_data
@@ -1275,7 +1274,6 @@ elif page == "🔧 Thiết bị đo":
                     "Chu kỳ HC":ck,"HC lần cuối":last,"Hạn HC":nxt,"Người lập":nl,"Tình trạng":tt,"Ghi chú":gc})
                 persist("dev_data"); ghi_log("TB","Cập nhật",f"Sửa {ma}"); st.rerun()
     st.write("")
-    # Custom table_actions for dev (not per-project)
     if dev_lst:
         sc1,sc2=st.columns([4,1])
         kw=sc1.text_input("🔍 Tìm kiếm",placeholder="Nhập từ khóa...",key="srch_TB",label_visibility="collapsed")
