@@ -227,8 +227,7 @@ def _gs_save(key: str, data) -> bool:
 # GOOGLE DRIVE — File Management
 # ══════════════════════════════════════════════════════════
 # SỬA LỖI: thay ID thư mục giả bằng None (tạm thời tắt upload nếu chưa có ID thật)
-DEFAULT_DRIVE_FOLDER_ID = None  # "0ANp3jJIUA1npUk9PVA" cũ bị sai, đặt None để tránh lỗi
-
+DEFAULT_DRIVE_FOLDER_ID = "0ANp3jJIUA1npUk9PVA"
 def upload_file_to_drive(file_name, file_content, folder_id=None):
     """Upload file lên Google Drive - return (success, message, file_id)"""
     try:
