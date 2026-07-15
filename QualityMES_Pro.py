@@ -599,7 +599,7 @@ def form_iqc():
     require_project(); da_banner()
     st.markdown("## ✅ Kiểm tra đầu vào (IQC)")
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (giống IPQC)
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -608,13 +608,12 @@ def form_iqc():
             st.session_state["last_drive_upload"] = None
             st.rerun()
     
-    # ✅ DRAFT SYSTEM
+    # Draft system (giữ nguyên)
     draft_key = f"iqc_draft_{st.session_state.active_project}"
     if draft_key not in st.session_state:
         saved_draft = load_draft("iqc_form")
         if saved_draft:
             st.session_state[draft_key] = saved_draft
-    
     if st.session_state.get(draft_key):
         draft = st.session_state[draft_key]
         col1, col2 = st.columns([4, 1])
@@ -626,44 +625,94 @@ def form_iqc():
                 clear_draft("iqc_form")
                 st.rerun()
     
-    h1,h2=st.columns([7,1.5])
-    lst=get_da_list("iqc_data")
-    csv=pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
-    h2.write(""); h2.download_button("📥 CSV",data=csv,file_name=f"IQC_{AP}.csv",mime="text/csv",key="dl_iqc",disabled=not lst)
-    with st.expander("➕ Tạo phiếu IQC mới"):
-        # ✅ ĐÃ XÓA DÒNG "Tạo phiếu xong..." (chỉ giữ lại form)
-        with st.form("frm_iqc_new",clear_on_submit=True):
-            c1,c2=st.columns(2)
-            sp=c1.text_input("Số phiếu *"); vt=c2.text_input("Tên vật tư *")
-            nc=c1.text_input("Nhà cung cấp"); lo=c2.text_input("Lô hàng")
-            sl=c1.text_input("SL mẫu"); tt=c2.selectbox("Trạng thái",["Đạt (Pass)","Không đạt (Failed)"])
-            un=unames(); nk=c1.selectbox("Người kiểm",un,index=un.index(cu().get("Họ tên","")) if cu().get("Họ tên","") in un else 0)
-            ng=c2.date_input("Ngày kiểm",value=date.today()); gi=c1.time_input("Giờ kiểm",value=datetime.now().time())
-            gc=st.text_area("Ghi chú",height=100)
+    lst = get_da_list("iqc_data")
+    csv = pd.DataFrame(lst).to_csv(index=False).encode("utf-8-sig") if lst else b""
+    st.download_button("📥 CSV", data=csv, file_name=f"IQC_{AP}.csv", mime="text/csv", key="dl_iqc", disabled=not lst)
+    
+    _show_iqc = bool(st.session_state.get("last_created_iqc"))
+    with st.expander("➕ Tạo phiếu IQC mới", expanded=_show_iqc):
+        last_iqc = st.session_state.get("last_created_iqc")
+        if last_iqc:
+            st.success(f"✅ Đã tạo phiếu **{last_iqc['sp']}**")
+            st.markdown("#### 📎 Upload file đính kèm ngay:")
+            up_now_iqc = st.file_uploader("Chọn file", accept_multiple_files=True,
+                                           type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+                                           key=f"iqc_upload_{id(last_iqc)}")
+            c1u, c2u = st.columns(2)
+            if up_now_iqc and c1u.button("☁️ Upload lên Drive", use_container_width=True, key="btn_up_iqc"):
+                drive_files = []
+                for file in up_now_iqc:
+                    success, msg, file_id = upload_file_to_drive(file.name, file.getvalue())
+                    if success and file_id:
+                        drive_url = get_drive_file_download_url(file_id)
+                        drive_files.append({"name": file.name, "id": file_id, "url": drive_url})
+                        st.success(f"✅ {file.name}")
+                    else:
+                        st.error(msg)
+                if drive_files:
+                    idx = last_iqc["idx"]
+                    lst[idx]["drive_files"] = list(lst[idx].get("drive_files", [])) + drive_files
+                    lst[idx]["Files"] = [f["name"] for f in lst[idx]["drive_files"]]
+                    set_da_list("iqc_data", lst)
+                    st.session_state["last_created_iqc"] = None
+                    st.session_state["last_drive_upload"] = drive_files
+                    st.rerun()
+            if c2u.button("⏭️ Bỏ qua", use_container_width=True, key="btn_skip_iqc"):
+                st.session_state["last_created_iqc"] = None
+                st.rerun()
+            if st.button("Đóng thông báo", key="close_iqc_msg"):
+                st.session_state["last_created_iqc"] = None
+                st.rerun()
+            st.divider()
+        
+        with st.form("frm_iqc_new", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            sp = c1.text_input("Số phiếu *")
+            vt = c2.text_input("Tên vật tư *")
+            nc = c1.text_input("Nhà cung cấp")
+            lo = c2.text_input("Lô hàng")
+            sl = c1.text_input("SL mẫu")
+            tt = c2.selectbox("Trạng thái", ["Đạt (Pass)", "Không đạt (Failed)"])
+            un = unames()
+            nk = c1.selectbox("Người kiểm", un, index=un.index(cu().get("Họ tên", "")) if cu().get("Họ tên", "") in un else 0)
+            ng = c2.date_input("Ngày kiểm", value=date.today())
+            gi = c1.time_input("Giờ kiểm", value=datetime.now().time())
+            gc = st.text_area("Ghi chú", height=100)
 
-            # ✅ AUTO-SAVE DRAFT
-            draft_key = f"iqc_draft_{st.session_state.active_project}"
+            # Auto-save draft
             if sp or vt:
                 draft_data = {"số_phiếu": sp, "tên_vật_tư": vt,
-                    "nhà_cung_cấp": nc, "lô": lo,
-                    "saved_at": datetime.now().strftime("%H:%M:%S")}
+                              "nhà_cung_cấp": nc, "lô": lo,
+                              "saved_at": datetime.now().strftime("%H:%M:%S")}
                 save_draft("iqc_form", draft_data)
                 st.session_state[draft_key] = draft_data
 
-            if st.form_submit_button("✅ Tạo phiếu",use_container_width=True):
+            if st.form_submit_button("✅ Tạo phiếu", use_container_width=True):
                 if sp and vt:
-                    lst.append({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc or "-","Lô":lo or "-",
-                        "SL mẫu":sl or "-","Thời gian kiểm":f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
-                        "Người kiểm":nk,"Files":[],"drive_files":[],
-                        "Trạng thái":tt,"Ghi chú":gc or "-","Người tạo":cu().get("Tài khoản","")})
-                    set_da_list("iqc_data",lst)
+                    lst.append({
+                        "Số phiếu": sp,
+                        "Tên vật tư": vt,
+                        "Nhà cung cấp": nc or "-",
+                        "Lô": lo or "-",
+                        "SL mẫu": sl or "-",
+                        "Thời gian kiểm": f"{ng.strftime('%d-%m-%Y')} {gi.strftime('%H:%M')}",
+                        "Người kiểm": nk,
+                        "Files": [],
+                        "drive_files": [],
+                        "Trạng thái": tt,
+                        "Ghi chú": gc or "-",
+                        "Người tạo": cu().get("Tài khoản", "")
+                    })
+                    set_da_list("iqc_data", lst)
                     clear_draft("iqc_form")
                     st.session_state[draft_key] = None
-                    ghi_log("IQC","Tạo mới",f"Tạo {sp}"); st.rerun()
-                else: st.error("Điền Số phiếu và Tên vật tư")
+                    st.session_state["last_created_iqc"] = {"sp": sp, "idx": len(lst) - 1}
+                    ghi_log("IQC", "Tạo mới", f"Tạo {sp}")
+                    st.rerun()
+                else:
+                    st.error("Điền Số phiếu và Tên vật tư")
 
-    def edit_iqc(idx,row,lst_ref,dk):
-        # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (trong popover sửa)
+    def edit_iqc(idx, row, lst_ref, dk):
         cur_drive_files = list(row.get("drive_files", []))
         if cur_drive_files:
             st.markdown("**📎 Files đã upload:**")
@@ -671,10 +720,9 @@ def form_iqc():
                 st.markdown(f"📥 [{f['name']}]({f['url']})")
         
         new_up = st.file_uploader("➕ Upload file lên Google Drive",
-            accept_multiple_files=True,
-            type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
-            key=f"up_iqc_{idx}")
-        
+                                   accept_multiple_files=True,
+                                   type=["pdf","docx","xlsx","xls","jpg","jpeg","png"],
+                                   key=f"up_iqc_{idx}")
         if new_up and st.button("☁️ Upload lên Drive", key=f"btn_upload_iqc_{idx}"):
             new_drive_files = list(cur_drive_files)
             for file in new_up:
@@ -689,29 +737,40 @@ def form_iqc():
             lst_ref[idx].update({"Files": file_names, "drive_files": new_drive_files})
             set_da_list("iqc_data", lst_ref)
             ghi_log("IQC", "Upload file", f"Upload {len(new_up)} file vào {row.get('Số phiếu','')}")
-            # ✅ Lưu thông báo để hiển thị ở đầu trang
             st.session_state["last_drive_upload"] = new_drive_files
             st.rerun()
-
+        
         with st.form(f"frm_eiqc_{idx}"):
-            c1,c2=st.columns(2)
-            sp=c1.text_input("Số phiếu",value=row.get("Số phiếu","")); vt=c2.text_input("Tên vật tư",value=row.get("Tên vật tư",""))
-            nc=c1.text_input("Nhà cung cấp",value=row.get("Nhà cung cấp","")); lo=c2.text_input("Lô",value=row.get("Lô",""))
-            sl=c1.text_input("SL mẫu",value=row.get("SL mẫu",""))
-            tt_o=["Đạt (Pass)","Không đạt (Failed)"]; cur_tt=row.get("Trạng thái","Đạt (Pass)")
-            tt=c2.selectbox("Trạng thái",tt_o,index=tt_o.index(cur_tt) if cur_tt in tt_o else 0,key=f"tt_iqc_{idx}")
-            un=unames(); cur_nk=row.get("Người kiểm","")
-            nk=c1.selectbox("Người kiểm",un,index=un.index(cur_nk) if cur_nk in un else 0,key=f"nk_iqc_{idx}")
-            gc=st.text_area("Ghi chú",value=row.get("Ghi chú",""),height=100)
-            if st.form_submit_button("💾 Lưu",use_container_width=True):
-                lst_ref[idx].update({"Số phiếu":sp,"Tên vật tư":vt,"Nhà cung cấp":nc,"Lô":lo,
-                    "SL mẫu":sl,"Người kiểm":nk,"Trạng thái":tt,"Ghi chú":gc})
-                set_da_list("iqc_data",lst_ref); ghi_log("IQC","Cập nhật",f"Sửa {sp}"); st.rerun()
-
+            c1, c2 = st.columns(2)
+            sp = c1.text_input("Số phiếu", value=row.get("Số phiếu",""))
+            vt = c2.text_input("Tên vật tư", value=row.get("Tên vật tư",""))
+            nc = c1.text_input("Nhà cung cấp", value=row.get("Nhà cung cấp",""))
+            lo = c2.text_input("Lô", value=row.get("Lô",""))
+            sl = c1.text_input("SL mẫu", value=row.get("SL mẫu",""))
+            tt_o = ["Đạt (Pass)", "Không đạt (Failed)"]
+            cur_tt = row.get("Trạng thái", "Đạt (Pass)")
+            tt = c2.selectbox("Trạng thái", tt_o, index=tt_o.index(cur_tt) if cur_tt in tt_o else 0, key=f"tt_iqc_{idx}")
+            un = unames()
+            cur_nk = row.get("Người kiểm","")
+            nk = c1.selectbox("Người kiểm", un, index=un.index(cur_nk) if cur_nk in un else 0, key=f"nk_iqc_{idx}")
+            gc = st.text_area("Ghi chú", value=row.get("Ghi chú",""), height=100)
+            if st.form_submit_button("💾 Lưu", use_container_width=True):
+                lst_ref[idx].update({
+                    "Số phiếu": sp,
+                    "Tên vật tư": vt,
+                    "Nhà cung cấp": nc,
+                    "Lô": lo,
+                    "SL mẫu": sl,
+                    "Người kiểm": nk,
+                    "Trạng thái": tt,
+                    "Ghi chú": gc
+                })
+                set_da_list("iqc_data", lst_ref)
+                ghi_log("IQC", "Cập nhật", f"Sửa {sp}")
+                st.rerun()
+    
     st.write("")
-    table_actions(lst,"Số phiếu","IQC","iqc_data",edit_iqc)
-
-def form_ipqc():
+    table_actions(lst, "Số phiếu", "IQC", "iqc_data", edit_iqc)def form_ipqc():
     require_project(); da_banner()
     st.markdown("## 🧪 Kiểm tra quá trình (IPQC)")
     
