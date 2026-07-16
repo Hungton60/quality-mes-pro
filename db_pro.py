@@ -4,7 +4,7 @@ Cải tiến:
   ✅ Caching tối ưu (cache_resource + cache_data)
   ✅ Session persistence — giữ đăng nhập khi refresh (theo session ID)
   ✅ Auto-save + Draft system
-  ✅ Google Drive integration cho file management
+  ✅ Google Drive integration cho file management (fix Broken pipe, tăng timeout)
   ✅ Dual-write: JSON local + Google Sheets + Google Drive
 """
 import json, os, streamlit as st
@@ -223,14 +223,13 @@ def _gs_save(key: str, data) -> bool:
         return False
 
 # ══════════════════════════════════════════════════════════
-# GOOGLE DRIVE — File Management
+# GOOGLE DRIVE — File Management (đã sửa lỗi Broken pipe)
 # ══════════════════════════════════════════════════════════
 # ✅ Đã sửa: dùng ID thư mục Drive đã từng hoạt động
-# Bạn có thể thay bằng folder ID mới nếu cần
 DEFAULT_DRIVE_FOLDER_ID = "0AKydXZT5zJZpUk9PVA"
 
 def upload_file_to_drive(file_name, file_content, folder_id=None):
-    """Upload file lên Google Drive - xử lý lỗi Broken pipe"""
+    """Upload file lên Google Drive - xử lý lỗi Broken pipe và timeout"""
     try:
         drive = _get_drive_client_pro()
         if drive is None:
