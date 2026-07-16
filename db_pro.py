@@ -2,7 +2,7 @@
 db_pro.py — Database cho QualityMES Pro v2.0
 Cải tiến:
   ✅ Caching tối ưu (cache_resource + cache_data)
-  ✅ Session persistence — giữ đăng nhập khi reload
+  ✅ Session persistence — giữ đăng nhập khi refresh (theo session ID)
   ✅ Auto-save + Draft system
   ✅ Google Drive integration cho file management
   ✅ Dual-write: JSON local + Google Sheets + Google Drive
@@ -10,6 +10,7 @@ Cải tiến:
 import json, os, streamlit as st
 from pathlib import Path
 from datetime import datetime
+import uuid  # ✅ Thêm để tạo session ID riêng cho từng máy
 
 # ══════════════════════════════════════════════════════════
 # CONFIG
@@ -41,7 +42,6 @@ def _get_gspread_client_pro():
                   "https://www.googleapis.com/auth/drive"]
         creds_dict = None
         if hasattr(st, "secrets") and "gcp_service_account_pro" in st.secrets:
-            # Hỗ trợ cả TOML section [gcp_service_account_pro] và JSON object
             raw = st.secrets["gcp_service_account_pro"]
             if hasattr(raw, '_asdict'):
                 creds_dict = dict(raw._asdict())
@@ -59,7 +59,6 @@ def _get_gspread_client_pro():
             return None
         
         creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        # ✅ FIX: Set timeout để tránh hanging
         client = gspread.authorize(creds)
         print("[GSheets] ✅ Connected!")
         return client
@@ -226,8 +225,9 @@ def _gs_save(key: str, data) -> bool:
 # ══════════════════════════════════════════════════════════
 # GOOGLE DRIVE — File Management
 # ══════════════════════════════════════════════════════════
-# SỬA LỖI: thay ID thư mục giả bằng None (tạm thời tắt upload nếu chưa có ID thật)
+# ✅ Đã sửa: dùng ID thư mục Drive đã từng hoạt động
 DEFAULT_DRIVE_FOLDER_ID = "0ANp3jJIUA1npUk9PVA"
+
 def upload_file_to_drive(file_name, file_content, folder_id=None):
     """Upload file lên Google Drive - return (success, message, file_id)"""
     try:
@@ -284,40 +284,48 @@ def get_drive_file_download_url(file_id):
     return f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
 
 # ══════════════════════════════════════════════════════════
-# SESSION PERSISTENCE — Giữ đăng nhập khi reload
+# SESSION PERSISTENCE — Giữ đăng nhập theo session ID (không bị chéo)
 # ══════════════════════════════════════════════════════════
 def save_session_token(user_account):
-    """Lưu session token vào file local (bảo mật cơ bản)"""
+    """Lưu session token theo session ID riêng cho từng máy"""
+    session_id = st.query_params.get("session_id", None)
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        st.query_params["session_id"] = session_id
+        st.rerun()
     token = {
         "account": user_account,
         "timestamp": datetime.now().isoformat(),
         "expires": (datetime.now().timestamp() + 86400 * 7)  # 7 ngày
     }
-    token_path = DATA_DIR / "session_token.json"
+    token_path = DATA_DIR / f"session_token_{session_id}.json"
     token_path.write_text(json.dumps(token, ensure_ascii=False), encoding="utf-8")
 
 def load_session_token():
-    """Load session token và kiểm tra hạn"""
+    """Load token theo session ID từ query params"""
+    session_id = st.query_params.get("session_id", None)
+    if not session_id:
+        return None
     try:
-        token_path = DATA_DIR / "session_token.json"
+        token_path = DATA_DIR / f"session_token_{session_id}.json"
         if not token_path.exists():
             return None
         token = json.loads(token_path.read_text(encoding="utf-8"))
         if datetime.now().timestamp() > token.get("expires", 0):
-            token_path.unlink()  # Xóa token hết hạn
+            token_path.unlink()
             return None
         return token.get("account")
     except Exception:
         return None
 
 def clear_session_token():
-    """Xóa session token khi đăng xuất"""
-    try:
-        token_path = DATA_DIR / "session_token.json"
+    """Xóa token file theo session ID và xóa session ID khỏi URL"""
+    session_id = st.query_params.get("session_id", None)
+    if session_id:
+        token_path = DATA_DIR / f"session_token_{session_id}.json"
         if token_path.exists():
             token_path.unlink()
-    except Exception:
-        pass
+    st.query_params.pop("session_id", None)
 
 # ══════════════════════════════════════════════════════════
 # DRAFT SYSTEM — Auto-save + Tự động lưu nháp
@@ -357,7 +365,6 @@ def load_all() -> dict:
     try:
         ss = _get_spreadsheet_pro()
         if ss is not None:
-            # ✅ Load tất cả worksheets 1 lần (batch)
             all_ws = {ws.title: ws for ws in ss.worksheets()}
             for k in KEYS:
                 try:
@@ -385,7 +392,6 @@ def load_all() -> dict:
                     else:
                         result[k] = [{kk: (json.loads(v) if isinstance(v,str) and v.startswith("[") else v)
                                       for kk,v in rec.items()} for rec in records]
-                    # Backup local
                     try: _path(k).write_text(json.dumps(result[k], ensure_ascii=False), encoding="utf-8")
                     except: pass
                 except Exception as e:
@@ -408,13 +414,11 @@ def _local_backup(k):
 def save_key(key: str, data) -> None:
     """Ghi 1 key — lưu local ngay, ghi GSheets trong background thread"""
     import threading
-    # ✅ Lưu local ngay lập tức (nhanh)
     try:
         _path(key).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
         print(f"[Local Save Error] {e}")
     
-    # ✅ Ghi GSheets trong background (không block UI)
     def _bg_save():
         try:
             _gs_save(key, data)
@@ -457,26 +461,22 @@ def gs_status_pro() -> dict:
         if "spreadsheet_id_pro" not in st.secrets:
             return {"connected": False, "message": "Lưu local — Missing spreadsheet_id_pro"}
         
-        # Thử đọc credentials
         try:
             raw = st.secrets["gcp_service_account_pro"]
             creds_dict = {k: v for k, v in raw.items()}
         except Exception as e:
             return {"connected": False, "message": f"Lưu local — Đọc creds lỗi: {e}"}
         
-        # Thử tạo credentials
         try:
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
         except Exception as e:
             return {"connected": False, "message": f"Lưu local — Tạo creds lỗi: {e}"}
         
-        # Thử kết nối gspread
         try:
             gc = gspread.authorize(creds)
         except Exception as e:
             return {"connected": False, "message": f"Lưu local — gspread lỗi: {e}"}
         
-        # Thử mở spreadsheet
         try:
             sid = st.secrets["spreadsheet_id_pro"]
             ss = gc.open_by_key(sid)

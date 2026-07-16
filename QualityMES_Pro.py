@@ -9,6 +9,12 @@ from db_pro import (load_all, save_key, backup_all, restore_all, gs_status_pro,
                     upload_file_to_drive, list_drive_files, get_drive_file_download_url,
                     drive_status_pro)
 import time
+import uuid  # ✅ Thêm để tạo session ID
+
+# ✅ Tạo session ID nếu chưa có (giữ đăng nhập khi refresh)
+if "session_id" not in st.query_params:
+    st.query_params["session_id"] = str(uuid.uuid4())
+    st.rerun()
 
 # ✅ FIX LỖI 1: Không load Google Sheets khi chưa đăng nhập
 @st.cache_data(ttl=300, show_spinner=False)
@@ -94,16 +100,15 @@ def _load_data_from_sheets():
             if k in data and data[k]:
                 st.session_state[k] = data[k]
         st.session_state["_data_loaded"] = True
-        st.session_state["_users_loaded"] = True  # Không cần load users lại
+        st.session_state["_users_loaded"] = True
 
 def _init(k, v):
     if k not in st.session_state:
-        # Không gọi GSheets ở đây — tránh màn hình trắng khi chưa đăng nhập
         st.session_state[k] = v
 
 _init("current_user",   None)
 _init("login_error",    "")
-_init("active_project", None)   # Mã DA đang xem
+_init("active_project", None)
 _init("spc_df",         None)
 
 # ══════════════════════════════════════════════════════════
@@ -113,7 +118,6 @@ _init("last_save_time", time.time())
 _init("unsaved_changes", False)
 
 def auto_save():
-    """Auto-save nếu có thay đổi và đã 30s"""
     now = time.time()
     if st.session_state.get("unsaved_changes") and (now - st.session_state.last_save_time > 30):
         for key in ["iqc_data", "ipqc_data", "oqc_data", "ncr_data", "capa_data", "dev_data"]:
@@ -130,13 +134,12 @@ _init("project_list", [
      "Địa điểm":"TP.HCM","Ngày bắt đầu":"01-01-2026","Ngày kết thúc":"31-12-2026",
      "Trạng thái":"Đang chạy","Mô tả":"Dự án mẫu để demo","Người phụ trách":"Quản lý","Người tạo":"admin"},
 ])
-# Dữ liệu phiếu — tổ chức theo dự án: {"DA-001": [...], "DA-002": [...]}
 _init("iqc_data",   {})
 _init("ipqc_data",  {})
 _init("oqc_data",   {})
 _init("ncr_data",   {})
 _init("capa_data",  {})
-_init("dev_data",   {})   # TB đo — global (không theo dự án)
+_init("dev_data",   {})
 _init("log_list",   [])
 
 # ══════════════════════════════════════════════════════════
@@ -150,7 +153,6 @@ def ghi_log(phane, action, detail, da=None):
     st.session_state.log_list.insert(0, entry)
     save_key("log_list", st.session_state.log_list)
 
-# ✅ FIX: thêm dòng set unsaved_changes = True để auto-save hoạt động
 def persist(key):
     save_key(key, st.session_state[key])
     st.session_state.unsaved_changes = True
@@ -162,13 +164,11 @@ def unames():
     return [u["Họ tên"] for u in st.session_state.users_list]
 
 def get_da_list(key):
-    """Lấy danh sách phiếu của dự án hiện tại"""
     da = st.session_state.active_project
     if not da: return []
     return st.session_state[key].get(da, [])
 
 def set_da_list(key, lst):
-    """Ghi danh sách phiếu của dự án hiện tại"""
     da = st.session_state.active_project
     if not da: return
     st.session_state[key][da] = lst
@@ -195,10 +195,8 @@ def c_tinhtrang(v):
 def render_df(lst, badge_col=None, badge_fn=None):
     if not lst: st.info("Chưa có dữ liệu"); return
     df = pd.DataFrame(lst)
-    # ✅ Ẩn cột không cần thiết
     hide_cols = ["Người tạo", "drive_files", "_project_code"]
     cols = [c for c in df.columns if c not in hide_cols]
-    # ✅ Format cột Files thành tên file đẹp
     if "Files" in cols:
         df["Files"] = df["Files"].apply(lambda x: ", ".join(x) if isinstance(x, list) else str(x) if x else "")
     fn = badge_fn or c_tt
@@ -231,7 +229,6 @@ def table_actions(data_list_ref, id_field, phane, data_key, edit_fn,
     lst = list(data_list_ref)
     if not lst: st.info("Chưa có dữ liệu"); return
 
-    # Search
     sc1, sc2 = st.columns([4, 1])
     kw = sc1.text_input("🔍 Tìm kiếm", placeholder="Nhập từ khóa...",
                          key=f"srch_{phane}", label_visibility="collapsed")
@@ -278,16 +275,13 @@ def table_actions(data_list_ref, id_field, phane, data_key, edit_fn,
 # ══════════════════════════════════════════════════════════
 # LOGIN
 # ══════════════════════════════════════════════════════════
-# ✅ FIX: Load users_list từ GSheets TRƯỚC KHI check login
-# Để user thường đăng nhập được sau khi reload
 if st.session_state.current_user is None and not st.session_state.get("_users_loaded", False):
-    _data = cached_load_all()  # Dùng cache thay vì load_all() trực tiếp
+    _data = cached_load_all()
     if _data.get("users_list"):
         st.session_state["users_list"] = _data["users_list"]
     st.session_state["_users_loaded"] = True
 
 if st.session_state.current_user is None:
-    # ✅ Kiểm tra session token cũ
     saved_account = load_session_token()
     if saved_account:
         matched = next((u for u in st.session_state.users_list
@@ -343,10 +337,7 @@ if st.session_state.current_user is None:
 # ══════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════
-# ✅ FIX LỖI 1+2: Load data từ GSheets sau khi đã đăng nhập
 _load_data_from_sheets()
-
-# ✅ FIX LỖI 3: Auto-save mỗi lần render (nếu có thay đổi)
 auto_save()
 
 role_colors = {"Quản lý":"#f59e0b","Trưởng QC":"#10b981","Kiểm tra viên":"#818cf8"}
@@ -376,7 +367,7 @@ st.sidebar.markdown(f"<div style='font-size:11px;padding:4px 0;color:{'#4ade80' 
 
 if st.sidebar.button("🔄 Reload data", use_container_width=True):
     st.cache_data.clear()
-    st.session_state["_data_loaded"] = False  # ✅ Force reload từ GSheets
+    st.session_state["_data_loaded"] = False
     for k in ["users_list","project_list","iqc_data","ipqc_data","oqc_data","ncr_data","capa_data","dev_data","log_list"]:
         if k in st.session_state:
             del st.session_state[k]
@@ -384,7 +375,6 @@ if st.sidebar.button("🔄 Reload data", use_container_width=True):
 
 st.sidebar.markdown("---")
 
-# Chọn dự án
 all_projects = st.session_state.project_list
 proj_names = {f"{p['Mã DA']} — {p['Tên dự án']}": p["Mã DA"] for p in all_projects}
 
@@ -417,9 +407,6 @@ if st.sidebar.button("🚪 Đăng xuất", use_container_width=True):
 AP = st.session_state.active_project
 proj_info = next((p for p in all_projects if p["Mã DA"]==AP), None) if AP else None
 
-# ══════════════════════════════════════════════════════════
-# HEADER DỰ ÁN (hiện trên mỗi trang)
-# ══════════════════════════════════════════════════════════
 def da_banner():
     if not proj_info: return
     tt_colors = {"Đang chạy":"#059669","Hoàn thành":"#1d4ed8","Tạm dừng":"#d97706","Hủy":"#dc2626"}
@@ -536,7 +523,6 @@ elif page == "📁 Quản lý Dự án":
                 if ca: st.session_state.show_da_form = False; st.rerun()
             st.markdown("---")
 
-    # Bảng dự án
     if not all_projects:
         st.info("Chưa có dự án. Bấm ➕ Tạo dự án mới.")
     else:
@@ -593,13 +579,12 @@ elif page == "📁 Quản lý Dự án":
                         persist("project_list"); ghi_log("Dự án","Xóa",f"Xóa {proj['Mã DA']}",proj["Mã DA"]); st.rerun()
 
 # ══════════════════════════════════════════════════════════
-# HÀM IQC — ĐÃ SỬA GIỐNG IPQC
+# HÀM IQC (đã sửa giống IPQC)
 # ══════════════════════════════════════════════════════════
 def form_iqc():
     require_project(); da_banner()
     st.markdown("## ✅ Kiểm tra đầu vào (IQC)")
     
-    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (giống IPQC)
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -608,7 +593,6 @@ def form_iqc():
             st.session_state["last_drive_upload"] = None
             st.rerun()
     
-    # Draft system
     draft_key = f"iqc_draft_{st.session_state.active_project}"
     if draft_key not in st.session_state:
         saved_draft = load_draft("iqc_form")
@@ -679,7 +663,6 @@ def form_iqc():
             gi = c1.time_input("Giờ kiểm", value=datetime.now().time())
             gc = st.text_area("Ghi chú", height=100)
 
-            # Auto-save draft
             if sp or vt:
                 draft_data = {"số_phiếu": sp, "tên_vật_tư": vt,
                               "nhà_cung_cấp": nc, "lô": lo,
@@ -773,7 +756,7 @@ def form_iqc():
     table_actions(lst, "Số phiếu", "IQC", "iqc_data", edit_iqc)
 
 # ══════════════════════════════════════════════════════════
-# IPQC, OQC, NCR, CAPA, Thiết bị, SPC, Log, Users (giữ nguyên)
+# IPQC
 # ══════════════════════════════════════════════════════════
 def form_ipqc():
     require_project(); da_banner()
@@ -880,6 +863,9 @@ def form_ipqc():
     st.write("")
     table_actions(lst,"Số phiếu","IPQC","ipqc_data",edit_ipqc)
 
+# ══════════════════════════════════════════════════════════
+# OQC
+# ══════════════════════════════════════════════════════════
 def form_oqc():
     require_project(); da_banner()
     st.markdown("## 📦 Kiểm tra thành phẩm (OQC)")
@@ -1300,7 +1286,7 @@ elif page == "🔧 Thiết bị đo":
         st.info("Chưa có thiết bị đo nào.")
 
 # ══════════════════════════════════════════════════════════
-# BÁO CÁO SPC
+# BÁO CÁO SPC (giữ nguyên)
 # ══════════════════════════════════════════════════════════
 elif page == "📊 Báo cáo SPC":
     require_project(); da_banner()
