@@ -585,6 +585,7 @@ def form_iqc():
     require_project(); da_banner()
     st.markdown("## ✅ Kiểm tra đầu vào (IQC)")
     
+    # ✅ HIỆN KẾT QUẢ UPLOAD DRIVE (giống IPQC)
     if st.session_state.get("last_drive_upload"):
         st.success("✅ Files đã upload lên Google Drive:")
         for f in st.session_state["last_drive_upload"]:
@@ -593,6 +594,7 @@ def form_iqc():
             st.session_state["last_drive_upload"] = None
             st.rerun()
     
+    # Draft system
     draft_key = f"iqc_draft_{st.session_state.active_project}"
     if draft_key not in st.session_state:
         saved_draft = load_draft("iqc_form")
